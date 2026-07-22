@@ -21,9 +21,29 @@
       <a href="#history" class="nav-link" id="nav-history">History</a>
       <a href="#session-panel" class="nav-link" id="nav-sessions">Sessions</a>
     </nav>
-    <div class="sidebar-section">
-      <label class="field-label" for="api-key-input">API Key</label>
-      <input type="password" id="api-key-input" placeholder="Paste your API key" autocomplete="off">
+    <div class="sidebar-section env-panel" id="env-panel">
+      <div class="env-panel-header">
+        <label class="field-label">API Key</label>
+        <button class="env-manage-btn" id="env-manage-toggle" title="Manage saved keys">⚙ Manage</button>
+      </div>
+
+      <!-- Active key display (click to switch) -->
+      <div id="env-keys-chips" class="env-chips-container"></div>
+
+      <!-- Raw input fallback (shown when no saved keys or user wants one-off) -->
+      <input type="password" id="api-key-input" placeholder="Paste key, or save one below ↓" autocomplete="off" style="margin-top:6px;">
+
+      <!-- Manage panel (collapsed by default) -->
+      <div id="env-manage-panel" class="env-manage-panel hidden">
+        <div class="env-manage-inner">
+          <div id="env-saved-list" class="env-saved-list"></div>
+          <div class="env-add-row">
+            <input type="text" id="env-new-label" placeholder='Label (e.g. "Production")' autocomplete="off" class="env-label-input">
+            <input type="password" id="env-new-value" placeholder="API Key value" autocomplete="off" class="env-value-input">
+            <button id="env-add-btn" class="env-add-btn" title="Save key">＋</button>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="sidebar-footer">
       <span id="status-badge" class="status-badge status-checking">● Checking…</span>

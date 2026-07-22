@@ -962,3 +962,169 @@ input, select, textarea {
   color: var(--text-primary);
   background: rgba(255,255,255,0.1);
 }
+
+/* ─── Environment Variables Panel ─────────────────────────────────────────── */
+.env-panel { display: flex; flex-direction: column; gap: 4px; }
+
+.env-panel-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 2px;
+}
+
+.env-manage-btn {
+  background: transparent;
+  border: 1px solid rgba(255,255,255,0.1);
+  border-radius: 5px;
+  color: var(--text-tertiary);
+  font-family: 'Inter', sans-serif;
+  font-size: 10px;
+  padding: 3px 8px;
+  cursor: pointer;
+  transition: all 0.15s ease;
+}
+.env-manage-btn:hover,
+.env-manage-btn.active {
+  color: var(--accent-color);
+  border-color: rgba(124,108,240,0.4);
+  background: rgba(124,108,240,0.08);
+}
+
+.env-chips-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  min-height: 0;
+}
+.env-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 20px;
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+  font-weight: 500;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(255,255,255,0.04);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.15s ease;
+  user-select: none;
+}
+.env-chip:hover { background: rgba(255,255,255,0.08); color: var(--text-primary); }
+.env-chip.env-chip-active {
+  background: rgba(124,108,240,0.18);
+  border-color: rgba(124,108,240,0.5);
+  color: var(--accent-color);
+}
+.env-chip-dot {
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.env-manage-panel {
+  margin-top: 6px;
+  border-radius: 8px;
+  border: 1px solid rgba(255,255,255,0.07);
+  background: rgba(0,0,0,0.2);
+  overflow: hidden;
+  animation: fadeIn 0.15s ease-out;
+}
+.env-manage-inner { padding: 10px; display: flex; flex-direction: column; gap: 8px; }
+
+.env-saved-list { display: flex; flex-direction: column; gap: 5px; }
+
+.env-saved-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: rgba(255,255,255,0.03);
+  border: 1px solid rgba(255,255,255,0.06);
+  transition: background 0.12s ease;
+}
+.env-saved-row:hover { background: rgba(255,255,255,0.06); }
+.env-saved-label {
+  flex: 1;
+  font-family: 'Inter', sans-serif;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.env-saved-masked {
+  font-family: 'JetBrains Mono', monospace;
+  font-size: 10px;
+  color: var(--text-tertiary);
+  flex-shrink: 0;
+}
+.env-use-btn {
+  font-size: 10px;
+  padding: 2px 8px;
+  border-radius: 4px;
+  background: rgba(124,108,240,0.12);
+  border: 1px solid rgba(124,108,240,0.25);
+  color: var(--accent-color);
+  cursor: pointer;
+  font-family: 'Inter', sans-serif;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+}
+.env-use-btn:hover { background: rgba(124,108,240,0.25); }
+.env-use-btn.env-use-active { background: rgba(124,108,240,0.3); font-weight: 600; }
+.env-delete-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-tertiary);
+  cursor: pointer;
+  font-size: 13px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  transition: color 0.12s ease;
+  flex-shrink: 0;
+}
+.env-delete-btn:hover { color: var(--danger-color); }
+
+.env-add-row {
+  display: flex;
+  gap: 5px;
+  align-items: center;
+  border-top: 1px solid rgba(255,255,255,0.06);
+  padding-top: 8px;
+}
+.env-label-input, .env-value-input {
+  height: 32px;
+  padding: 0 8px;
+  border-radius: 6px;
+  border: 1px solid rgba(255,255,255,0.1);
+  background: rgba(0,0,0,0.2);
+  color: var(--text-primary);
+  font-family: 'Inter', sans-serif;
+  font-size: 11px;
+}
+.env-label-input { flex: 1; min-width: 0; }
+.env-value-input { flex: 1.5; min-width: 0; }
+.env-add-btn {
+  height: 32px;
+  width: 32px;
+  border-radius: 6px;
+  border: 1px solid rgba(124,108,240,0.3);
+  background: rgba(124,108,240,0.12);
+  color: var(--accent-color);
+  font-size: 18px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.12s ease;
+  flex-shrink: 0;
+  line-height: 1;
+}
+.env-add-btn:hover { background: rgba(124,108,240,0.25); }

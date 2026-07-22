@@ -987,6 +987,171 @@ function setupCrawlCsvDownload() {
   });
 }
 
+// ─── ENVIRONMENT VARIABLES PANEL ─────────────────────────────────────────────
+const ENV_STORAGE_KEY = "crawlix_env_keys";
+
+function envLoadKeys() {
+  try { return JSON.parse(localStorage.getItem(ENV_STORAGE_KEY) || "[]"); }
+  catch (e) { return []; }
+}
+
+function envSaveKeys(keys) {
+  localStorage.setItem(ENV_STORAGE_KEY, JSON.stringify(keys));
+}
+
+// Mask key: show first 4 and last 4 chars with *** in between
+function envMaskKey(value) {
+  if (!value || value.length <= 8) return "••••••••";
+  return value.slice(0, 4) + "••••" + value.slice(-4);
+}
+
+// Apply a key value to the raw input + state (no auth logic change needed)
+function envApplyKey(value) {
+  state.apiKey = value;
+  const input = document.getElementById("api-key-input");
+  if (input) input.value = value;
+  localStorage.setItem("crawlix_key", value);
+  checkHealth();
+}
+
+// Re-render chips and saved list
+function envRender() {
+  const keys = envLoadKeys();
+  const chipsEl = document.getElementById("env-keys-chips");
+  const listEl = document.getElementById("env-saved-list");
+
+  // ── Chips ──
+  if (chipsEl) {
+    if (keys.length === 0) {
+      chipsEl.innerHTML = "";
+    } else {
+      chipsEl.innerHTML = keys.map((k, i) => `
+        <span class="env-chip ${k.value === state.apiKey ? 'env-chip-active' : ''}"
+              data-index="${i}" title="${escapeHtml(k.label)}">
+          <span class="env-chip-dot"></span>
+          ${escapeHtml(k.label)}
+        </span>
+      `).join("");
+
+      chipsEl.querySelectorAll(".env-chip").forEach(chip => {
+        chip.addEventListener("click", () => {
+          const key = keys[parseInt(chip.dataset.index, 10)];
+          if (key) {
+            envApplyKey(key.value);
+            envRender();
+            showToast(`Active key: ${key.label}`, "success", 1800);
+          }
+        });
+      });
+    }
+  }
+
+  // ── Saved list inside manage panel ──
+  if (listEl) {
+    if (keys.length === 0) {
+      listEl.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">No saved keys yet.</div>';
+    } else {
+      listEl.innerHTML = keys.map((k, i) => `
+        <div class="env-saved-row" data-index="${i}">
+          <span class="env-saved-label" title="${escapeHtml(k.label)}">${escapeHtml(k.label)}</span>
+          <span class="env-saved-masked">${envMaskKey(k.value)}</span>
+          <button class="env-use-btn ${k.value === state.apiKey ? 'env-use-active' : ''}"
+                  data-index="${i}">${k.value === state.apiKey ? '✓ Active' : 'Use'}</button>
+          <button class="env-delete-btn" data-index="${i}" title="Delete">✕</button>
+        </div>
+      `).join("");
+
+      listEl.querySelectorAll(".env-use-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const key = keys[parseInt(btn.dataset.index, 10)];
+          if (key) {
+            envApplyKey(key.value);
+            envRender();
+            showToast(`Active key: ${key.label}`, "success", 1800);
+          }
+        });
+      });
+
+      listEl.querySelectorAll(".env-delete-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+          const idx = parseInt(btn.dataset.index, 10);
+          const key = keys[idx];
+          if (!confirm(`Delete key "${key.label}"?`)) return;
+          keys.splice(idx, 1);
+          envSaveKeys(keys);
+          // If deleted key was active, clear the input
+          if (key.value === state.apiKey) {
+            envApplyKey("");
+          }
+          envRender();
+          showToast("Key deleted", "info", 1500);
+        });
+      });
+    }
+  }
+}
+
+function setupEnvPanel() {
+  const toggleBtn = document.getElementById("env-manage-toggle");
+  const managePanel = document.getElementById("env-manage-panel");
+  const addBtn = document.getElementById("env-add-btn");
+  const labelInput = document.getElementById("env-new-label");
+  const valueInput = document.getElementById("env-new-value");
+
+  if (!toggleBtn || !managePanel) return;
+
+  // Toggle manage panel open/close
+  toggleBtn.addEventListener("click", () => {
+    const open = !managePanel.classList.contains("hidden");
+    managePanel.classList.toggle("hidden", open);
+    toggleBtn.classList.toggle("active", !open);
+  });
+
+  // Add new key
+  const doAdd = () => {
+    const label = labelInput?.value.trim();
+    const value = valueInput?.value.trim();
+    if (!label) { showToast("Enter a label for this key", "error", 2000); return; }
+    if (!value) { showToast("Enter the API key value", "error", 2000); return; }
+
+    const keys = envLoadKeys();
+    // Prevent duplicate labels
+    if (keys.some(k => k.label.toLowerCase() === label.toLowerCase())) {
+      showToast(`A key named "${label}" already exists`, "error", 2000);
+      return;
+    }
+    keys.push({ label, value, createdAt: new Date().toISOString() });
+    envSaveKeys(keys);
+    if (labelInput) labelInput.value = "";
+    if (valueInput) valueInput.value = "";
+    envRender();
+    showToast(`Saved key: ${label}`, "success", 2000);
+  };
+
+  if (addBtn) addBtn.addEventListener("click", doAdd);
+
+  // Allow Enter key in value input to save
+  if (valueInput) {
+    valueInput.addEventListener("keydown", e => {
+      if (e.key === "Enter") doAdd();
+    });
+  }
+
+  // Initial render
+  envRender();
+
+  // If a saved key matches the current raw key input, reflect it
+  const rawInput = document.getElementById("api-key-input");
+  if (rawInput) {
+    rawInput.addEventListener("input", e => {
+      state.apiKey = e.target.value.trim();
+      localStorage.setItem("crawlix_key", state.apiKey);
+      envRender(); // refresh active chip highlight
+      checkHealth();
+    });
+  }
+}
+
 // ─── REQUEST HISTORY ─────────────────────────────────────────────────────────
 function saveToHistory(req, response) {
   try {
@@ -1162,16 +1327,11 @@ document.addEventListener("DOMContentLoaded", () => {
     crawlStartBtn.addEventListener("click", startCrawlJob);
   }
 
-  // API key binding
+  // Environment Variables Panel (manages API key saving, switching, and raw input sync)
+  setupEnvPanel();
+  // Restore last active key into input on load
   const apiKeyInput = document.getElementById("api-key-input");
-  if (apiKeyInput) {
-    apiKeyInput.value = state.apiKey;
-    apiKeyInput.addEventListener("input", e => {
-      state.apiKey = e.target.value.trim();
-      localStorage.setItem("crawlix_key", state.apiKey);
-      checkHealth();
-    });
-  }
+  if (apiKeyInput) apiKeyInput.value = state.apiKey;
 
   // Collapsible bodies toggle logic
   document.querySelectorAll(".collapsible-toggle").forEach(btn => {
