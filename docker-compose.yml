@@ -1,0 +1,15 @@
+version: '3.8'
+
+services:
+  crawlix:
+    build: .
+    image: crawlix:latest
+    container_name: crawlix_server
+    ports:
+      - "8000:8000"
+    environment:
+      - API_KEYS=mykey1,mykey2
+      - MAX_PLAYWRIGHT_INSTANCES=3
+      - SESSION_TTL_MINUTES=30
+      - MAX_SESSIONS=100
+    restart: unless-stopped
