@@ -132,6 +132,7 @@ class FetchResponse(BaseModel):
     error: Optional[str] = None
     error_message: Optional[str] = None
     screenshot: Optional[str] = None
+    timing: Optional[dict] = None
 
 class CrawlRequest(BaseModel):
     url: HttpUrl
@@ -212,7 +213,8 @@ async def fetch_endpoint(req: FetchRequest):
         retries_used=result.get("retries_used", 0),
         error=result.get("error"),
         error_message=result.get("error_message"),
-        screenshot=result.get("screenshot")
+        screenshot=result.get("screenshot"),
+        timing=result.get("timing")
     )
 
 # GET /api/sessions

@@ -453,7 +453,46 @@ function updateMetaBar(data) {
     urlEl.textContent = data.url;
     urlEl.title = data.url;
   }
+
+  // Render timing waterfall if timing data is present
+  renderWaterfall(data.timing);
 }
+
+// ─── TIMING WATERFALL ─────────────────────────────────────────────────────────
+function renderWaterfall(timing) {
+  const waterfall = document.getElementById("timing-waterfall");
+  if (!waterfall) return;
+
+  if (!timing) {
+    waterfall.classList.add("hidden");
+    return;
+  }
+
+  const { security_ms = 0, connect_ms = 0, ttfb_ms = 0, transfer_ms = 0, total_ms = 1 } = timing;
+  const safeTotal = total_ms || 1;
+
+  // Segments: [id, ms value]
+  const segs = [
+    ["tseg-security", security_ms, "tval-security"],
+    ["tseg-connect",  connect_ms,  "tval-connect"],
+    ["tseg-ttfb",     ttfb_ms,     "tval-ttfb"],
+    ["tseg-transfer", transfer_ms, "tval-transfer"],
+  ];
+
+  segs.forEach(([segId, ms, valId]) => {
+    const seg = document.getElementById(segId);
+    const val = document.getElementById(valId);
+    const pct = Math.max(0.8, (ms / safeTotal) * 100); // min 0.8% so segment is visible
+    if (seg) {
+      seg.style.flex = String(pct);
+      seg.setAttribute("data-ms", ms + "ms");
+    }
+    if (val) val.textContent = ms + "ms";
+  });
+
+  waterfall.classList.remove("hidden");
+}
+
 
 // Sidebar routing navigation setup
 function setupRouting() {

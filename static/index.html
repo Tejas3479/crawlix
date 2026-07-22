@@ -234,6 +234,24 @@
           <span id="response-url" class="meta-url-text">—</span></span>
       </div>
 
+      <!-- Timing Waterfall -->
+      <div id="timing-waterfall" class="timing-waterfall hidden">
+        <div class="timing-label">Timing breakdown</div>
+        <div class="timing-track" id="timing-track">
+          <div class="timing-seg" id="tseg-security" data-label="Security check" style="background:#a78bfa"></div>
+          <div class="timing-seg" id="tseg-connect"  data-label="Connect / DNS"  style="background:#60a5fa"></div>
+          <div class="timing-seg" id="tseg-ttfb"     data-label="TTFB"           style="background:#34d399"></div>
+          <div class="timing-seg" id="tseg-transfer"  data-label="Processing"     style="background:#f59e0b"></div>
+        </div>
+        <div class="timing-legend">
+          <span class="tleg-item"><span class="tleg-dot" style="background:#a78bfa"></span>Security <span id="tval-security">—</span></span>
+          <span class="tleg-item"><span class="tleg-dot" style="background:#60a5fa"></span>Connect <span id="tval-connect">—</span></span>
+          <span class="tleg-item"><span class="tleg-dot" style="background:#34d399"></span>TTFB <span id="tval-ttfb">—</span></span>
+          <span class="tleg-item"><span class="tleg-dot" style="background:#f59e0b"></span>Processing <span id="tval-transfer">—</span></span>
+        </div>
+      </div>
+
+
       <!-- Tab Bar -->
       <div id="tab-bar" class="tab-bar">
         <button id="tab-preview"  class="tab-btn tab-active">Preview</button>

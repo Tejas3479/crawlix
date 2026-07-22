@@ -620,8 +620,10 @@ async def run_fetch(
 ) -> dict:
     """
     Returns dict with keys:
-      final_url, status_code, raw_html, content, retries_used, error, error_message, screenshot
+      final_url, status_code, raw_html, content, retries_used, error, error_message, screenshot, timing
     """
+    import time as _time
+    _t0 = _time.monotonic()
     # 1. SSRF Safety Check (async-safe DNS resolution)
     if not await is_ssrf_safe(url):
         logger.warning(f"Blocking request to restricted URL: {url}")
@@ -633,8 +635,10 @@ async def run_fetch(
             "retries_used": 0,
             "error": "forbidden_address",
             "error_message": f"URL {url} resolves to a restricted local or private address.",
-            "screenshot": None
+            "screenshot": None,
+            "timing": None
         }
+    _t_security = _time.monotonic()
 
     # 2. Parse Proxy Pool (handles comma, newline, and CRLF delimiters)
     proxies_list = []
@@ -688,9 +692,11 @@ async def run_fetch(
                     kwargs["content"] = body.encode()
 
                 resp = await curl_session.request(method, str(url), **kwargs)
+                _t_connect = _time.monotonic()  # first response received
                 final_url = str(resp.url)
                 status_code = resp.status_code
                 raw_html = resp.text
+                _t_ttfb = _time.monotonic()  # content fully read
                 last_status = status_code
 
                 resp_cookies_dict = dict(resp.cookies)
@@ -708,7 +714,9 @@ async def run_fetch(
                         response = None
                         try:
                             response = await page.goto(str(url), wait_until=wait_until, timeout=timeout * 1000)
+                            _t_connect = _time.monotonic()  # page navigation complete
                         except Exception as goto_err:
+                            _t_connect = _time.monotonic()
                             if "timeout" in str(goto_err).lower():
                                 logger.warning(f"Navigation to {url} timed out (wait_until={wait_until}). Continuing with partially loaded page content.")
                             else:
@@ -716,6 +724,7 @@ async def run_fetch(
                         status_code = response.status if response else 200
                         last_status = status_code
                         final_url = page.url
+                        _t_ttfb = _time.monotonic()  # DOM available
                         
                         # Custom Actions processor
                         if actions:
@@ -835,7 +844,8 @@ async def run_fetch(
                     "status_code": status_code,
                     "content": None,
                     "raw_html": "",
-                    "screenshot": None
+                    "screenshot": None,
+                    "timing": None
                 }
 
     content = await process_content(
@@ -851,6 +861,15 @@ async def run_fetch(
         extraction_prompt=extraction_prompt
     )
     
+    _t_done = _time.monotonic()
+
+    # Build timing breakdown (all values in ms)
+    _security_ms = int((_t_security - _t0) * 1000)
+    _tc = getattr(run_fetch, '_t_connect', None)  # may not exist if error before connect
+    _connect_ms = max(0, int((_t_connect - _t_security) * 1000)) if '_t_connect' in dir() else 0
+    _ttfb_ms = max(0, int((_t_ttfb - _t_connect) * 1000)) if '_t_ttfb' in dir() and '_t_connect' in dir() else 0
+    _transfer_ms = max(0, int((_t_done - (_t_ttfb if '_t_ttfb' in dir() else _t_security)) * 1000))
+
     return {
         "final_url": final_url,
         "status_code": status_code,
@@ -859,7 +878,14 @@ async def run_fetch(
         "retries_used": attempt,
         "error": None,
         "error_message": None,
-        "screenshot": screenshot_data_url
+        "screenshot": screenshot_data_url,
+        "timing": {
+            "security_ms": _security_ms,
+            "connect_ms": _connect_ms,
+            "ttfb_ms": _ttfb_ms,
+            "transfer_ms": _transfer_ms,
+            "total_ms": int((_t_done - _t0) * 1000)
+        }
     }
 
 
