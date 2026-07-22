@@ -184,14 +184,46 @@ Start an asynchronous site crawl. Returns a `crawl_id` to poll for results.
 | `extraction_prompt` | string | `null` | LLM extraction instruction applied to each page |
 | `stealth` | boolean | `false` | Playwright stealth mode |
 
-### Response
-
 ```json
 {
   "crawl_id": "abc123",
   "status": "running",
   "message": "Crawl started"
 }
+```
+
+### Crawl Lifecycle Diagram
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant API as FastAPI
+    participant CM as CrawlManager
+    participant Worker as Async Worker Pool
+    participant Web as Target Website
+
+    Client->>API: POST /crawl (start_url, max_pages, max_depth)
+    API->>CM: Create Crawl Job & Spawn Background Task
+    CM-->>API: Return crawl_id
+    API-->>Client: 200 OK (crawl_id, status: "running")
+    
+    rect rgb(30, 30, 45)
+        note over CM, Web: Background Crawl Execution
+        loop Until max_pages reached or queue empty
+            CM->>Worker: Dispatch URL task
+            Worker->>Web: Fetch page & extract links
+            Web-->>Worker: Page Content + Discovered URLs
+            Worker->>CM: Store page result & filter new links
+        end
+    end
+
+    loop Polling Status
+        Client->>API: GET /crawl/{crawl_id}
+        API->>CM: Query Job Status
+        CM-->>API: Job State & Pages List
+        API-->>Client: Status JSON (running / completed)
+    end
 ```
 
 ---

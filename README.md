@@ -130,32 +130,71 @@ curl -X POST http://localhost:8000/fetch \
 
 ## 🏗️ Architecture
 
+```mermaid
+flowchart TD
+    subgraph Client["Client Layer"]
+        UI["Web Dashboard (Vanilla JS)"]
+        API_CLIENT["API Clients (cURL, Python, JS)"]
+    end
+
+    subgraph Server["FastAPI Application (app.py)"]
+        AUTH["API Key Auth & CORS"]
+        ROUTES["Endpoints (/fetch, /crawl, /api/sessions)"]
+    end
+
+    subgraph Engine["Fetch Engine (fetcher.py)"]
+        SSRF["SSRF Guard (Async DNS)"]
+        ROUTER{"Execution Path"}
+        PW["Playwright (Chromium)<br/><i>JS Rendering & Actions</i>"]
+        CURL["curl-cffi<br/><i>TLS Impersonation</i>"]
+        PROCESS["Content Processing<br/><i>Markdown & CSS Filtering</i>"]
+        LLM["AI Extraction<br/><i>OpenAI / Anthropic / Gemini</i>"]
+    end
+
+    UI -->|REST API| ROUTES
+    API_CLIENT -->|x-api-key| AUTH
+    AUTH --> ROUTES
+    ROUTES --> SSRF
+    SSRF --> ROUTER
+    ROUTER -->|render_js: true| PW
+    ROUTER -->|render_js: false| CURL
+    PW --> PROCESS
+    CURL --> PROCESS
+    PROCESS -->|Optional LLM| LLM
+    LLM --> ROUTES
+    PROCESS --> ROUTES
 ```
-┌─────────────────────────────────────┐
-│         FastAPI  (app.py)           │
-│   /fetch  /crawl  /api/sessions     │
-└──────────────┬──────────────────────┘
-               │
-        ┌──────▼──────┐
-        │  fetcher.py  │
-        │              │
-        │  ┌────────┐  │   JS rendering
-        │  │Playwright│◄─────────────── Chromium
-        │  └────────┘  │
-        │  ┌─────────┐ │   Fast HTTP
-        │  │curl-cffi│◄──────────────── TLS impersonation
-        │  └─────────┘ │
-        │  ┌─────────┐ │   AI extraction
-        │  │   LLM   │◄──────────────── OpenAI / Anthropic / Gemini
-        │  └─────────┘ │
-        └──────────────┘
-               │
-        ┌──────▼──────┐
-        │  static/     │
-        │  index.html  │  Dashboard UI
-        │  app.js      │
-        │  style.css   │
-        └─────────────┘
+
+### Request Lifecycle
+
+```mermaid
+sequenceDiagram
+    autonumber
+    actor Client
+    participant API as FastAPI (app.py)
+    participant Guard as SSRF Guard
+    participant Engine as Fetch Engine
+    participant LLM as AI Provider
+
+    Client->>API: POST /fetch
+    API->>Guard: Async DNS Check
+    alt Restricted IP
+        Guard-->>API: Blocked
+        API-->>Client: 403 Forbidden
+    else Valid Public IP
+        Guard->>Engine: Execute Fetch
+        alt render_js: true
+            Engine->>Engine: Render page via Playwright
+        else render_js: false
+            Engine->>Engine: Fetch via curl-cffi
+        end
+        opt AI Extraction
+            Engine->>LLM: Send content + prompt
+            LLM-->>Engine: Structured JSON
+        end
+        Engine-->>API: Content + Timing Breakdown
+        API-->>Client: 200 OK (FetchResponse)
+    end
 ```
 
 ---

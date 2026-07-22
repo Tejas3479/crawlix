@@ -4,6 +4,34 @@ This guide covers running Crawlix on your own infrastructure — locally, with D
 
 ---
 
+## 🏗️ Deployment Architecture
+
+```mermaid
+flowchart LR
+    subgraph Public["Public Network"]
+        CLIENT["Web Browser / API Client"]
+        NGINX["Nginx Reverse Proxy (HTTPS 443)"]
+    end
+
+    subgraph Host["Server Environment (Docker Host / VPS)"]
+        CONTAINER["Crawlix App Container (:8000)"]
+        
+        subgraph Inside["Internal Components"]
+            FASTAPI["FastAPI / Uvicorn"]
+            PW["Headless Chromium Pool"]
+            SESSIONS["Session Manager"]
+        end
+    end
+
+    CLIENT -->|HTTPS| NGINX
+    NGINX -->|Proxy Pass :8000| CONTAINER
+    CONTAINER --> FASTAPI
+    FASTAPI --> PW
+    FASTAPI --> SESSIONS
+```
+
+---
+
 ## Option 1: Docker (Recommended)
 
 Docker is the easiest way to run Crawlix. It bundles Python, Playwright, Chromium, and all dependencies.
