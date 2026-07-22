@@ -1,3 +1,20 @@
+// Global Error Boundary - prevents silent UI crashes and alerts user cleanly
+window.addEventListener("unhandledrejection", (event) => {
+  console.error("[Crawlix Error Boundary] Unhandled Promise Rejection:", event.reason);
+  const msg = event.reason?.message || (typeof event.reason === "string" ? event.reason : "An unexpected error occurred");
+  if (typeof showToast === "function") {
+    showToast("Background error: " + msg, "error", 4000);
+  }
+});
+
+window.onerror = function (message, source, lineno, colno, error) {
+  console.error("[Crawlix Error Boundary] Global JS Error:", message, source, lineno, colno, error);
+  if (typeof showToast === "function") {
+    showToast("UI Error: " + message, "error", 4000);
+  }
+  return false;
+};
+
 // State management
 const state = {
   apiKey: localStorage.getItem("crawlix_key") || "",
@@ -863,15 +880,36 @@ async function viewCrawlDetails(crawlId, silent = false) {
   if (!silent) {
     detailsView.classList.remove("hidden");
     titleEl.textContent = "Loading crawl results…";
-    tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-tertiary);">Loading results…</td></tr>';
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="4">
+          <div class="loading-state-container">
+            <div class="spinner"></div>
+            <span>Fetching crawl results...</span>
+          </div>
+        </td>
+      </tr>`;
   }
+
+  const renderErrorState = (msg) => {
+    titleEl.textContent = "Error loading results";
+    tableBody.innerHTML = `
+      <tr>
+        <td colspan="4">
+          <div class="error-state-container">
+            <span>⚠️ ${escapeHtml(msg)}</span>
+            <button class="error-retry-btn" onclick="viewCrawlDetails('${crawlId}')">🔄 Retry</button>
+          </div>
+        </td>
+      </tr>`;
+  };
 
   try {
     const headers = {};
     if (state.apiKey) headers["x-api-key"] = state.apiKey;
     const res = await fetch(`/api/crawl/${crawlId}`, { headers });
     if (!res.ok) {
-      titleEl.textContent = "Error loading results";
+      renderErrorState(`Failed to load crawl results (HTTP ${res.status})`);
       return;
     }
     const crawl = await res.json();
@@ -963,7 +1001,7 @@ async function viewCrawlDetails(crawlId, silent = false) {
     });
 
   } catch (err) {
-    titleEl.textContent = "Connection error";
+    renderErrorState(err.message || "Network error loading crawl results");
   }
 }
 
