@@ -52,7 +52,7 @@ async def is_ssrf_safe(url: str) -> bool:
         return False
 
 
-# Module-level logger — basicConfig is configured once in app.py lifespan
+# Module-level logger — logging configuration is initialized in app.py lifespan
 logger = logging.getLogger("crawlix.fetcher")
 
 # CONSTANTS
@@ -60,58 +60,62 @@ MAX_PLAYWRIGHT_INSTANCES = int(os.getenv("MAX_PLAYWRIGHT_INSTANCES", "3"))
 SESSION_TTL_MINUTES = int(os.getenv("SESSION_TTL_MINUTES", "30"))
 MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 
+DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
+SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
+CRAWLS_FILE = os.path.join(DATA_DIR, "crawls.json")
+
 
 class PlaywrightManager:
     """
-    Manages a single shared Chromium browser instance + a semaphore for concurrency.
+    Manages Playwright browser instance, context pool, and anti-bot evasion settings.
     """
     def __init__(self):
+        self.playwright = None
         self.browser: Browser | None = None
-        self.semaphore: asyncio.Semaphore = asyncio.Semaphore(MAX_PLAYWRIGHT_INSTANCES)
-        self._playwright = None
-        self._slots_lock: asyncio.Lock = asyncio.Lock()
-        self.slots_free: int = MAX_PLAYWRIGHT_INSTANCES
+        self.slots_free = MAX_PLAYWRIGHT_INSTANCES
+        self._slots_lock = asyncio.Lock()
+        self._init_lock = asyncio.Lock()
 
-    async def start(self):
-        logger.info("Initializing Playwright driver...")
-        self._playwright = await async_playwright().start()
-        self.browser = await self._playwright.chromium.launch(headless=True)
-        logger.info("Playwright driver and headless Chromium browser started.")
+    async def initialize(self):
+        async with self._init_lock:
+            if self.playwright is None:
+                logger.info("Initializing global Playwright Chromium instance...")
+                self.playwright = await async_playwright().start()
+                self.browser = await self.playwright.chromium.launch(
+                    headless=True,
+                    args=[
+                        "--no-sandbox",
+                        "--disable-setuid-sandbox",
+                        "--disable-dev-shm-usage",
+                        "--disable-accelerated-2d-canvas",
+                        "--no-first-run",
+                        "--no-zygote",
+                        "--disable-gpu"
+                    ]
+                )
 
-    async def stop(self):
-        logger.info("Stopping Playwright driver...")
-        if self.browser:
-            await self.browser.close()
-            self.browser = None
-        if self._playwright:
-            await self._playwright.stop()
-            self._playwright = None
-        logger.info("Playwright driver stopped successfully.")
+    async def close(self):
+        async with self._init_lock:
+            if self.browser:
+                logger.info("Closing Playwright Chromium browser...")
+                await self.browser.close()
+                self.browser = None
+            if self.playwright:
+                await self.playwright.stop()
+                self.playwright = None
 
     @asynccontextmanager
-    async def acquire_context(self, proxy_url: str | None = None, extra_headers: dict = {}, stealth: bool = False):
-        await self.semaphore.acquire()
+    async def acquire_context(self, proxy_url: str | None = None, user_headers: dict | None = None, stealth: bool = False):
+        await self.initialize()
+
         async with self._slots_lock:
+            if self.slots_free <= 0:
+                logger.warning("Max Playwright instances reached. Waiting for available slot...")
+            while self.slots_free <= 0:
+                await asyncio.sleep(0.1)
             self.slots_free -= 1
             _free = self.slots_free
         logger.info(f"Acquired Playwright slot. Free slots: {_free}")
-
-        # Crash Auto-Recovery
-        if not self.browser or not self.browser.is_connected():
-            logger.warning("Playwright browser is disconnected or crashed. Relaunching...")
-            try:
-                if self.browser:
-                    await self.browser.close()
-            except Exception:
-                pass
-            try:
-                self.browser = await self._playwright.chromium.launch(headless=True)
-                logger.info("Playwright Chromium browser successfully relaunched.")
-            except Exception as e:
-                logger.error(f"Failed to relaunch Playwright browser: {e}")
-                self.semaphore.release()
-                self.slots_free += 1
-                raise e
 
         context = None
         try:
@@ -178,7 +182,6 @@ class PlaywrightManager:
                     await context.close()
                 except Exception as e:
                     logger.error(f"Error closing playwright context: {e}")
-            self.semaphore.release()
             async with self._slots_lock:
                 self.slots_free += 1
                 _free = self.slots_free
@@ -187,12 +190,71 @@ class PlaywrightManager:
 
 class SessionManager:
     """
-    Manages both curl_cffi and Playwright sessions keyed by session_id.
+    Manages both curl_cffi and Playwright sessions keyed by session_id with disk persistence.
     """
     def __init__(self):
         self.sessions: dict[str, dict] = {}
         self.ttl_seconds: int = SESSION_TTL_MINUTES * 60
         self._lock: asyncio.Lock = asyncio.Lock()
+        self._load_from_disk()
+
+    def _save_to_disk(self):
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            serializable = {}
+            for sid, s in self.sessions.items():
+                created_at = s["created_at"].isoformat() if isinstance(s["created_at"], dt_class) else str(s["created_at"])
+                last_active = s["last_active"].isoformat() if isinstance(s["last_active"], dt_class) else str(s["last_active"])
+                serializable[sid] = {
+                    "session_id": s["session_id"],
+                    "engine": s["engine"],
+                    "cookies": s.get("cookies", {}),
+                    "created_at": created_at,
+                    "last_active": last_active,
+                    "request_count": s.get("request_count", 0)
+                }
+            tmp_file = SESSIONS_FILE + ".tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(serializable, f, indent=2)
+            os.replace(tmp_file, SESSIONS_FILE)
+        except Exception as e:
+            logger.error(f"Failed to persist sessions to disk: {e}")
+
+    def _load_from_disk(self):
+        if not os.path.exists(SESSIONS_FILE):
+            return
+        try:
+            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            now = dt_class.now(timezone.utc)
+            loaded_count = 0
+            for sid, s in data.items():
+                try:
+                    created_at = dt_class.fromisoformat(s["created_at"])
+                    last_active = dt_class.fromisoformat(s["last_active"])
+                except Exception:
+                    created_at = now
+                    last_active = now
+
+                delta = (now - last_active).total_seconds()
+                if delta > self.ttl_seconds:
+                    continue
+
+                self.sessions[sid] = {
+                    "session_id": sid,
+                    "curl_session": None,
+                    "playwright_context": None,
+                    "cookies": s.get("cookies", {}),
+                    "last_active": last_active,
+                    "created_at": created_at,
+                    "request_count": s.get("request_count", 0),
+                    "engine": s.get("engine", "curl")
+                }
+                loaded_count += 1
+            if loaded_count > 0:
+                logger.info(f"Loaded {loaded_count} active sessions from disk persistence.")
+        except Exception as e:
+            logger.error(f"Failed to load sessions from disk: {e}")
 
     async def get_or_create(self, session_id: str, engine: str) -> dict:
         async with self._lock:
@@ -257,12 +319,14 @@ class SessionManager:
                         except Exception:
                             pass
             
+            self._save_to_disk()
             return session
 
     async def update_cookies(self, session_id: str, new_cookies: dict):
         async with self._lock:
             if session_id in self.sessions:
                 self.sessions[session_id]["cookies"].update(new_cookies)
+                self._save_to_disk()
 
     async def delete_session(self, session_id: str):
         async with self._lock:
@@ -279,12 +343,14 @@ class SessionManager:
                         await session["playwright_context"].close()
                     except Exception:
                         pass
+                self._save_to_disk()
 
     async def close_all(self):
         logger.info("Closing all active session contexts...")
         session_ids = list(self.sessions.keys())
         for sid in session_ids:
             await self.delete_session(sid)
+        self._save_to_disk()
 
     async def cleanup_loop(self):
         try:
@@ -301,6 +367,8 @@ class SessionManager:
                 for sid in expired_ids:
                     logger.info(f"Session {sid} expired due to inactivity. Cleaning up.")
                     await self.delete_session(sid)
+                if expired_ids:
+                    self._save_to_disk()
         except asyncio.CancelledError:
             logger.info("Session cleanup loop cancelled gracefully.")
             raise
@@ -310,11 +378,13 @@ class SessionManager:
         # Shallow copy to prevent dictionary modification errors during async execution
         sessions_copy = list(self.sessions.items())
         for sid, s in sessions_copy:
+            created_str = s["created_at"].isoformat() if isinstance(s["created_at"], dt_class) else str(s["created_at"])
+            last_active_str = s["last_active"].isoformat() if isinstance(s["last_active"], dt_class) else str(s["last_active"])
             result.append({
                 "session_id": s["session_id"],
                 "engine": s["engine"],
-                "created_at": s["created_at"].isoformat() + "Z",
-                "last_active": s["last_active"].isoformat() + "Z",
+                "created_at": created_str + ("Z" if not created_str.endswith("Z") else ""),
+                "last_active": last_active_str + ("Z" if not last_active_str.endswith("Z") else ""),
                 "request_count": s["request_count"],
                 "cookie_count": len(s["cookies"])
             })
@@ -917,6 +987,40 @@ class CrawlManager:
         self.crawls: dict[str, dict] = {}
         self.tasks: dict[str, asyncio.Task] = {}
         self._lock = asyncio.Lock()
+        self._load_from_disk()
+
+    def _save_to_disk(self):
+        try:
+            os.makedirs(DATA_DIR, exist_ok=True)
+            serializable = list(self.crawls.values())
+            tmp_file = CRAWLS_FILE + ".tmp"
+            with open(tmp_file, "w", encoding="utf-8") as f:
+                json.dump(serializable, f, indent=2)
+            os.replace(tmp_file, CRAWLS_FILE)
+        except Exception as e:
+            logger.error(f"Failed to persist crawls to disk: {e}")
+
+    def _load_from_disk(self):
+        if not os.path.exists(CRAWLS_FILE):
+            return
+        try:
+            with open(CRAWLS_FILE, "r", encoding="utf-8") as f:
+                crawls_list = json.load(f)
+            loaded_count = 0
+            for c in crawls_list:
+                cid = c.get("crawl_id")
+                if not cid:
+                    continue
+                # If a crawl was running when server stopped, mark as interrupted
+                if c.get("status") == "running":
+                    c["status"] = "interrupted"
+                    c["error_message"] = "Crawl was interrupted by a server restart"
+                self.crawls[cid] = c
+                loaded_count += 1
+            if loaded_count > 0:
+                logger.info(f"Loaded {loaded_count} crawl jobs from disk persistence.")
+        except Exception as e:
+            logger.error(f"Failed to load crawls from disk: {e}")
 
     async def create_crawl(self, url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False) -> str:
         crawl_id = str(uuid.uuid4())
@@ -930,6 +1034,7 @@ class CrawlManager:
             "results": [],
             "created_at": datetime.datetime.now(timezone.utc).isoformat()
         }
+        self._save_to_disk()
         # Launch task and track it
         task = asyncio.create_task(self._run_crawl(crawl_id, url, max_pages, max_depth, render_js, output_format, strip_links, css_selector, limit_domain, actions, extraction_prompt, stealth))
         self.tasks[crawl_id] = task
@@ -950,7 +1055,7 @@ class CrawlManager:
                     "pages_crawled": c["pages_crawled"],
                     "max_pages": c["max_pages"],
                     "created_at": c["created_at"],
-                    "url_count": len(c["crawled_urls"])
+                    "url_count": len(c.get("crawled_urls", []))
                 }
                 for c in crawls_copy
             ],
@@ -965,6 +1070,7 @@ class CrawlManager:
             task = self.tasks.pop(crawl_id, None)
             if task and not task.done():
                 task.cancel()
+            self._save_to_disk()
             return True
         return False
 
@@ -1054,6 +1160,7 @@ class CrawlManager:
                             "error_message": res.get("error_message")
                         })
                         self.crawls[crawl_id]["results"] = results
+                        self._save_to_disk()
             except Exception as e:
                 logger.error(f"Failed to crawl {url}: {e}")
             finally:
@@ -1101,6 +1208,7 @@ class CrawlManager:
             self.tasks.pop(crawl_id, None)
             if crawl_id in self.crawls:
                 self.crawls[crawl_id]["status"] = "completed" if crawled_count > 0 else "failed"
+                self._save_to_disk()
 
 
 # SINGLETONS

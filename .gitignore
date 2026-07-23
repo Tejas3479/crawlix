@@ -50,3 +50,6 @@ test-results/
 
 # Node (if any tooling added later)
 node_modules/
+
+# Runtime Data Persistence
+data/
