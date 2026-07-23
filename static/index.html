@@ -12,7 +12,7 @@
 </head>
 <body>
   <!-- Sidebar -->
-  <aside id="sidebar">
+  <aside id="sidebar" role="complementary" aria-label="Dashboard Sidebar">
     <div class="logo" role="banner">⬡ Crawlix</div>
     <h1 class="sr-only">Crawlix Dashboard</h1>
     <nav class="nav" aria-label="Main navigation">
@@ -21,37 +21,37 @@
       <a href="#history" class="nav-link" id="nav-history">History</a>
       <a href="#session-panel" class="nav-link" id="nav-sessions">Sessions</a>
     </nav>
-    <div class="sidebar-section env-panel" id="env-panel">
+    <div class="sidebar-section env-panel" id="env-panel" role="region" aria-label="API Key Management">
       <div class="env-panel-header">
-        <label class="field-label">API Key</label>
-        <button class="env-manage-btn" id="env-manage-toggle" title="Manage saved keys">⚙ Manage</button>
+        <label class="field-label" for="api-key-input">API Key</label>
+        <button class="env-manage-btn" id="env-manage-toggle" title="Manage saved keys" aria-expanded="false" aria-controls="env-manage-panel" aria-label="Manage saved API keys">⚙ Manage</button>
       </div>
 
       <!-- Active key display (click to switch) -->
-      <div id="env-keys-chips" class="env-chips-container"></div>
+      <div id="env-keys-chips" class="env-chips-container" role="group" aria-label="Saved API Key Shortcuts"></div>
 
       <!-- Raw input fallback (shown when no saved keys or user wants one-off) -->
-      <input type="password" id="api-key-input" placeholder="Paste key, or save one below ↓" autocomplete="off" style="margin-top:6px;">
+      <input type="password" id="api-key-input" placeholder="Paste key, or save one below ↓" autocomplete="off" style="margin-top:6px;" aria-label="API Key value">
 
       <!-- Manage panel (collapsed by default) -->
       <div id="env-manage-panel" class="env-manage-panel hidden">
         <div class="env-manage-inner">
-          <div id="env-saved-list" class="env-saved-list"></div>
+          <div id="env-saved-list" class="env-saved-list" role="list" aria-label="Saved API keys"></div>
           <div class="env-add-row">
-            <input type="text" id="env-new-label" placeholder='Label (e.g. "Production")' autocomplete="off" class="env-label-input">
-            <input type="password" id="env-new-value" placeholder="API Key value" autocomplete="off" class="env-value-input">
-            <button id="env-add-btn" class="env-add-btn" title="Save key">＋</button>
+            <input type="text" id="env-new-label" placeholder='Label (e.g. "Production")' autocomplete="off" class="env-label-input" aria-label="New key label">
+            <input type="password" id="env-new-value" placeholder="API Key value" autocomplete="off" class="env-value-input" aria-label="New key secret value">
+            <button id="env-add-btn" class="env-add-btn" title="Save key" aria-label="Save API Key">＋</button>
           </div>
         </div>
       </div>
     </div>
     <div class="sidebar-footer">
-      <span id="status-badge" class="status-badge status-checking">● Checking…</span>
+      <span id="status-badge" class="status-badge status-checking" role="status" aria-live="polite">● Checking…</span>
     </div>
   </aside>
 
   <!-- Main -->
-  <main id="main">
+  <main id="main" role="main">
 
     <!-- Request Builder Section -->
     <section class="section" id="builder-section">
@@ -59,7 +59,7 @@
 
       <!-- URL Row -->
       <div class="url-row">
-        <select id="method-select">
+        <select id="method-select" aria-label="HTTP Method">
           <option>GET</option>
           <option>POST</option>
           <option>PUT</option>
@@ -67,57 +67,57 @@
           <option>PATCH</option>
           <option>HEAD</option>
         </select>
-        <input type="text" id="url-input" placeholder="https://example.com" autocomplete="off">
+        <input type="text" id="url-input" placeholder="https://example.com" autocomplete="off" aria-label="Target URL">
       </div>
 
       <!-- Collapsible: Headers -->
       <div class="collapsible" id="headers-collapsible">
-        <button class="collapsible-toggle" aria-expanded="false" data-target="headers-body">
-          Headers <span class="chevron">›</span>
+        <button class="collapsible-toggle" aria-expanded="false" aria-controls="headers-body" data-target="headers-body">
+          Headers <span class="chevron" aria-hidden="true">›</span>
         </button>
-        <div class="collapsible-body hidden" id="headers-body">
+        <div class="collapsible-body hidden" id="headers-body" role="region" aria-label="HTTP Headers">
           <div id="headers-list" class="kv-list" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
-          <button id="add-header-btn" class="icon-btn" style="margin-top: 8px;">+ Add Header</button>
+          <button id="add-header-btn" class="icon-btn" style="margin-top: 8px;" aria-label="Add HTTP Header">+ Add Header</button>
         </div>
       </div>
 
       <!-- Collapsible: Cookies -->
       <div class="collapsible" id="cookies-collapsible">
-        <button class="collapsible-toggle" aria-expanded="false" data-target="cookies-body">
-          Cookies <span class="chevron">›</span>
+        <button class="collapsible-toggle" aria-expanded="false" aria-controls="cookies-body" data-target="cookies-body">
+          Cookies <span class="chevron" aria-hidden="true">›</span>
         </button>
-        <div class="collapsible-body hidden" id="cookies-body">
+        <div class="collapsible-body hidden" id="cookies-body" role="region" aria-label="HTTP Cookies">
           <div id="cookies-list" class="kv-list" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
-          <button id="add-cookie-btn" class="icon-btn" style="margin-top: 8px;">+ Add Cookie</button>
+          <button id="add-cookie-btn" class="icon-btn" style="margin-top: 8px;" aria-label="Add Cookie">+ Add Cookie</button>
         </div>
       </div>
 
       <!-- Collapsible: Body -->
       <div class="collapsible" id="body-collapsible">
-        <button class="collapsible-toggle" aria-expanded="false" data-target="body-body">
-          Request body <span class="chevron">›</span>
+        <button class="collapsible-toggle" aria-expanded="false" aria-controls="body-body" data-target="body-body">
+          Request body <span class="chevron" aria-hidden="true">›</span>
         </button>
-        <div class="collapsible-body hidden" id="body-body">
-          <textarea id="body-textarea" rows="5"
+        <div class="collapsible-body hidden" id="body-body" role="region" aria-label="Request Body">
+          <textarea id="body-textarea" rows="5" aria-label="Request body JSON or text"
             placeholder='{"key": "value"}'></textarea>
         </div>
       </div>
 
       <!-- Collapsible: LLM Structured Output Settings -->
       <div class="collapsible" id="json-schema-collapsible">
-        <button class="collapsible-toggle" aria-expanded="false" data-target="json-schema-body">
-          LLM Structured Output Settings <span class="chevron">›</span>
+        <button class="collapsible-toggle" aria-expanded="false" aria-controls="json-schema-body" data-target="json-schema-body">
+          LLM Structured Output Settings <span class="chevron" aria-hidden="true">›</span>
         </button>
-        <div class="collapsible-body hidden" id="json-schema-body">
+        <div class="collapsible-body hidden" id="json-schema-body" role="region" aria-label="LLM Output Settings">
           <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
             <div class="option-group">
               <label class="field-label" for="json-schema-textarea">JSON Schema (Optional)</label>
-              <textarea id="json-schema-textarea" rows="4" style="margin-top: 4px;"
+              <textarea id="json-schema-textarea" rows="4" style="margin-top: 4px;" aria-label="JSON Schema Specification"
                 placeholder='{&#10;  "type": "object",&#10;  "properties": {&#10;    "products": {&#10;      "type": "array",&#10;      "items": {&#10;        "type": "object",&#10;        "properties": {&#10;          "name": {"type": "string"},&#10;          "price": {"type": "string"}&#10;        },&#10;        "required": ["name", "price"]&#10;      }&#10;    }&#10;  },&#10;  "required": ["products"]&#10;}'></textarea>
             </div>
             <div class="option-group">
               <label class="field-label" for="extraction-prompt-textarea">Extraction Instructions / Prompt (Optional)</label>
-              <textarea id="extraction-prompt-textarea" rows="3" style="margin-top: 4px;"
+              <textarea id="extraction-prompt-textarea" rows="3" style="margin-top: 4px;" aria-label="Extraction prompt instructions"
                 placeholder="e.g. Extract only the company names, locations, and descriptions listed under the sponsors section."></textarea>
             </div>
           </div>
@@ -126,40 +126,40 @@
 
       <!-- Collapsible: Selectors & Tuning -->
       <div class="collapsible" id="tuning-collapsible">
-        <button class="collapsible-toggle" aria-expanded="false" data-target="tuning-body">
-          Advanced Selectors & Tuning <span class="chevron">›</span>
+        <button class="collapsible-toggle" aria-expanded="false" aria-controls="tuning-body" data-target="tuning-body">
+          Advanced Selectors & Tuning <span class="chevron" aria-hidden="true">›</span>
         </button>
-        <div class="collapsible-body hidden" id="tuning-body">
+        <div class="collapsible-body hidden" id="tuning-body" role="region" aria-label="Advanced Selectors and Tuning">
           <div class="options-grid" style="margin-top:0; margin-bottom:0; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
             <div class="option-group">
               <label class="field-label" for="css-selector-input">Target CSS Selector</label>
-              <input type="text" id="css-selector-input" placeholder="e.g. #main-content" autocomplete="off" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px; margin-top:4px;">
+              <input type="text" id="css-selector-input" placeholder="e.g. #main-content" autocomplete="off" aria-label="Target CSS Selector" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px; margin-top:4px;">
             </div>
             <div class="option-group">
               <label class="field-label" for="wait-selector-input">Wait For Selector</label>
-              <input type="text" id="wait-selector-input" placeholder="e.g. div.product-card" autocomplete="off" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px; margin-top:4px;">
+              <input type="text" id="wait-selector-input" placeholder="e.g. div.product-card" autocomplete="off" aria-label="Wait For Selector" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px; margin-top:4px;">
             </div>
             <div class="option-group">
               <label class="field-label" for="llm-model-input">Custom LLM Model</label>
-              <input type="text" id="llm-model-input" placeholder="e.g. gemini-2.5-flash" autocomplete="off" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px; margin-top:4px;">
+              <input type="text" id="llm-model-input" placeholder="e.g. gemini-2.5-flash" autocomplete="off" aria-label="Custom LLM Model" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px; margin-top:4px;">
             </div>
             <div class="option-group" style="grid-column: span 3; display: flex; flex-direction: column;">
               <label class="field-label" for="proxy-input" style="margin-bottom: 4px;">Proxy Rotation Pool (One per line)</label>
-              <textarea id="proxy-input" rows="2" placeholder="e.g. http://user:pass@proxy1:8080&#10;http://user:pass@proxy2:8080" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; font-family:'Inter',sans-serif; font-size:13px; padding:10px;"></textarea>
+              <textarea id="proxy-input" rows="2" placeholder="e.g. http://user:pass@proxy1:8080&#10;http://user:pass@proxy2:8080" aria-label="Proxy Rotation Pool" style="background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; font-family:'Inter',sans-serif; font-size:13px; padding:10px;"></textarea>
             </div>
           </div>
         </div>
       </div>
       <!-- Collapsible: Browser Actions -->
       <div class="collapsible" id="actions-collapsible">
-        <button class="collapsible-toggle" aria-expanded="false" data-target="actions-body">
-          Browser Actions (JS Render only) <span class="chevron">›</span>
+        <button class="collapsible-toggle" aria-expanded="false" aria-controls="actions-body" data-target="actions-body">
+          Browser Actions (JS Render only) <span class="chevron" aria-hidden="true">›</span>
         </button>
-        <div class="collapsible-body hidden" id="actions-body">
+        <div class="collapsible-body hidden" id="actions-body" role="region" aria-label="Browser Actions">
           <div id="actions-list" class="actions-list" style="display:flex; flex-direction:column; gap:8px;">
             <!-- Action rows will be added here dynamically -->
           </div>
-          <button id="add-action-btn" class="icon-btn" style="margin-top: 8px;">+ Add Action</button>
+          <button id="add-action-btn" class="icon-btn" style="margin-top: 8px;" aria-label="Add Browser Action">+ Add Action</button>
         </div>
       </div>
 
@@ -167,7 +167,7 @@
       <div class="options-grid">
         <div class="option-group">
           <label class="field-label" for="output-format-select">Output format</label>
-          <select id="output-format-select">
+          <select id="output-format-select" aria-label="Output Format">
             <option value="html">HTML</option>
             <option value="markdown">Markdown</option>
             <option value="structured">Structured JSON</option>
@@ -175,7 +175,7 @@
         </div>
         <div class="option-group" id="wait-until-group">
           <label class="field-label" for="wait-until-select">Wait Condition</label>
-          <select id="wait-until-select">
+          <select id="wait-until-select" aria-label="Wait Condition">
             <option value="networkidle">Network Idle</option>
             <option value="load">Page Loaded</option>
             <option value="domcontentloaded">DOM Loaded</option>
@@ -183,7 +183,7 @@
         </div>
         <div class="option-group">
           <label class="field-label" for="impersonate-select">Impersonate</label>
-          <select id="impersonate-select">
+          <select id="impersonate-select" aria-label="Browser Impersonation">
             <option value="chrome120">Chrome 120</option>
             <option value="chrome110">Chrome 110</option>
             <option value="firefox120">Firefox 120</option>
@@ -215,16 +215,16 @@
       </div>
 
       <!-- Send Button -->
-      <button id="send-btn" class="send-btn">Send request</button>
+      <button id="send-btn" class="send-btn" aria-label="Send Scrape Request">Send request</button>
     </section>
 
     <!-- Response Panel (hidden until first request) -->
-    <section class="section hidden" id="response-panel">
+    <section class="section hidden" id="response-panel" aria-label="Request Response Details">
       <h2 class="section-title">Response</h2>
 
       <!-- Metadata Bar -->
-      <div class="meta-bar">
-        <span id="response-status" class="status-pill">—</span>
+      <div class="meta-bar" role="region" aria-label="Response Metadata">
+        <span id="response-status" class="status-pill" aria-label="Response status">—</span>
         <span class="meta-item"><span class="meta-label">Time</span>
           <span id="response-latency">—</span> ms</span>
         <span class="meta-item"><span class="meta-label">Retries</span>
@@ -235,7 +235,7 @@
       </div>
 
       <!-- Timing Waterfall -->
-      <div id="timing-waterfall" class="timing-waterfall hidden">
+      <div id="timing-waterfall" class="timing-waterfall hidden" role="region" aria-label="Request timing waterfall">
         <div class="timing-label">Timing breakdown</div>
         <div class="timing-track" id="timing-track">
           <div class="timing-seg" id="tseg-security" data-label="Security check" style="background:#a78bfa"></div>
@@ -253,62 +253,62 @@
 
 
       <!-- Tab Bar -->
-      <div id="tab-bar" class="tab-bar">
-        <button id="tab-preview"  class="tab-btn tab-active">Preview</button>
-        <button id="tab-screenshot" class="tab-btn">Screenshot</button>
-        <button id="tab-markdown" class="tab-btn">Markdown</button>
-        <button id="tab-code"     class="tab-btn">Python snippet</button>
-        <button id="tab-json"     class="tab-btn">JSON</button>
+      <div id="tab-bar" class="tab-bar" role="tablist" aria-label="Response view tabs">
+        <button id="tab-preview"    class="tab-btn tab-active" role="tab" aria-selected="true"  aria-controls="content-preview"    tabindex="0">Preview</button>
+        <button id="tab-screenshot" class="tab-btn"            role="tab" aria-selected="false" aria-controls="content-screenshot" tabindex="-1">Screenshot</button>
+        <button id="tab-markdown"   class="tab-btn"            role="tab" aria-selected="false" aria-controls="content-markdown"   tabindex="-1">Markdown</button>
+        <button id="tab-code"       class="tab-btn"            role="tab" aria-selected="false" aria-controls="content-code"       tabindex="-1">Python snippet</button>
+        <button id="tab-json"       class="tab-btn"            role="tab" aria-selected="false" aria-controls="content-json"       tabindex="-1">JSON</button>
       </div>
 
       <!-- Tab Contents -->
       <div class="tab-contents">
         <!-- Preview -->
-        <div id="content-preview" class="tab-content">
-          <iframe id="preview-iframe" sandbox="allow-scripts allow-same-origin"
+        <div id="content-preview" class="tab-content" role="tabpanel" tabindex="0" aria-labelledby="tab-preview">
+          <iframe id="preview-iframe" title="Scraped Web Page Preview" aria-label="Scraped Web Page Preview" sandbox="allow-scripts allow-same-origin"
             style="width:100%;min-height:400px;border:none;"></iframe>
         </div>
         <!-- Screenshot -->
-        <div id="content-screenshot" class="tab-content hidden">
+        <div id="content-screenshot" class="tab-content hidden" role="tabpanel" tabindex="0" aria-labelledby="tab-screenshot">
           <div class="screenshot-container" style="text-align: center; background: rgba(0,0,0,0.2); padding: 16px; border-radius: 8px; border: 1px solid rgba(255,255,255,0.08); overflow: auto; max-height: 500px;">
             <img id="screenshot-img" src="" alt="Page Screenshot" style="max-width: 100%; height: auto; border-radius: 4px; box-shadow: 0 4px 12px rgba(0,0,0,0.5); display: none;">
             <div id="screenshot-placeholder" style="color: var(--text-tertiary); padding: 40px; font-size: 13px;">No screenshot captured. Enable 'Capture Screenshot' in advanced settings.</div>
           </div>
         </div>
         <!-- Markdown -->
-        <div id="content-markdown" class="tab-content hidden">
-          <button class="copy-btn" data-target="content-markdown">Copy</button>
+        <div id="content-markdown" class="tab-content hidden" role="tabpanel" tabindex="0" aria-labelledby="tab-markdown">
+          <button class="copy-btn" data-target="content-markdown" aria-label="Copy Markdown code block">Copy</button>
           <pre><code class="language-markdown" id="markdown-code"></code></pre>
         </div>
         <!-- Code -->
-        <div id="content-code" class="tab-content hidden">
-          <button class="copy-btn" data-target="content-code">Copy</button>
+        <div id="content-code" class="tab-content hidden" role="tabpanel" tabindex="0" aria-labelledby="tab-code">
+          <button class="copy-btn" data-target="content-code" aria-label="Copy Python code snippet">Copy</button>
           <pre><code class="language-python" id="python-code"></code></pre>
         </div>
         <!-- JSON -->
-        <div id="content-json" class="tab-content hidden">
-          <button class="copy-btn" data-target="content-json">Copy</button>
+        <div id="content-json" class="tab-content hidden" role="tabpanel" tabindex="0" aria-labelledby="tab-json">
+          <button class="copy-btn" data-target="content-json" aria-label="Copy JSON code block">Copy</button>
           <div id="json-tree" class="json-tree"></div>
         </div>
       </div>
     </section>
 
     <!-- Crawler Section -->
-    <section class="section hidden" id="crawler-section">
+    <section class="section hidden" id="crawler-section" aria-label="Website Crawler Section">
       <div class="section-header-row" style="margin-bottom: 20px;">
         <h2 class="section-title" style="margin-bottom: 0;">Website Crawler</h2>
       </div>
       
       <!-- Crawl Form -->
       <div class="url-row">
-        <input type="text" id="crawl-url-input" placeholder="https://example.com" autocomplete="off" style="flex: 1; height: 44px; background-color: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-primary); padding: 0 14px; font-family: 'Inter', sans-serif; font-size: 14px; transition: all 0.15s ease;">
-        <button id="crawl-start-btn" class="send-btn" style="width: auto; padding: 0 24px; height: 44px; border-radius: 8px;">Start Crawl</button>
+        <input type="text" id="crawl-url-input" placeholder="https://example.com" autocomplete="off" aria-label="Crawl Start URL" style="flex: 1; height: 44px; background-color: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-primary); padding: 0 14px; font-family: 'Inter', sans-serif; font-size: 14px; transition: all 0.15s ease;">
+        <button id="crawl-start-btn" class="send-btn" aria-label="Start Crawl Job" style="width: auto; padding: 0 24px; height: 44px; border-radius: 8px;">Start Crawl</button>
       </div>
 
         <div class="options-grid">
           <div class="option-group">
             <label class="field-label" for="crawl-max-pages-select">Max Pages</label>
-            <select id="crawl-max-pages-select">
+            <select id="crawl-max-pages-select" aria-label="Maximum Crawl Pages">
               <option value="5">5 pages</option>
               <option value="10" selected>10 pages</option>
               <option value="20">20 pages</option>
@@ -317,7 +317,7 @@
           </div>
           <div class="option-group">
             <label class="field-label" for="crawl-format-select">Output Format</label>
-            <select id="crawl-format-select">
+            <select id="crawl-format-select" aria-label="Crawl Output Format">
               <option value="markdown">Markdown</option>
               <option value="html">HTML</option>
               <option value="structured">Structured JSON</option>
@@ -339,30 +339,30 @@
           </div>
           <div class="option-group" style="grid-column: span 3;">
             <label class="field-label" for="crawl-extraction-prompt">Extraction Instructions (Optional)</label>
-            <textarea id="crawl-extraction-prompt" rows="2" style="margin-top:4px;" placeholder="e.g. Extract only product names and prices from each page."></textarea>
+            <textarea id="crawl-extraction-prompt" rows="2" style="margin-top:4px;" aria-label="Crawl Extraction Instructions Prompt" placeholder="e.g. Extract only product names and prices from each page."></textarea>
           </div>
         </div>
 
       <!-- Crawl History Grid -->
-      <div style="margin-top: 32px;">
+      <div style="margin-top: 32px;" role="region" aria-label="Crawl Jobs Overview">
         <h3 class="field-label" style="margin-bottom: 12px;">Crawl Jobs</h3>
-        <div class="crawl-history-grid" id="crawl-history-grid" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
+        <div class="crawl-history-grid" id="crawl-history-grid" role="list" aria-label="Active and Past Crawl Jobs" style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 12px;">
           <div class="empty-state">No crawls started yet</div>
         </div>
       </div>
 
       <!-- Crawl Details Sub-Section -->
-      <div id="crawl-details-view" class="hidden" style="margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; position: relative;">
+      <div id="crawl-details-view" class="hidden" role="region" aria-label="Crawl Job Details" style="margin-top: 32px; border-top: 1px solid rgba(255,255,255,0.08); padding-top: 24px; position: relative;">
         <div class="section-header-row" style="margin-bottom: 16px;">
           <h3 style="font-family:'Outfit',sans-serif; font-size:15px; font-weight:500; color: var(--text-primary);" id="crawl-details-title">Crawl Results: —</h3>
           <div style="display: flex; gap: 8px;">
-            <button id="crawl-download-csv-btn" class="icon-btn">⇩ Download CSV</button>
-            <button id="crawl-download-btn" class="icon-btn">⇩ Download JSON</button>
+            <button id="crawl-download-csv-btn" class="icon-btn" aria-label="Download Crawl Results as CSV">⇩ Download CSV</button>
+            <button id="crawl-download-btn" class="icon-btn" aria-label="Download Crawl Results as JSON">⇩ Download JSON</button>
           </div>
         </div>
 
         <!-- Crawl Stats HUD -->
-        <div id="crawl-stats-hud" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px;">
+        <div id="crawl-stats-hud" role="group" aria-label="Crawl Statistics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px;">
           <div class="stat-card" style="background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); padding: 12px; border-radius: 8px;">
             <div class="field-label" style="font-size: 9px; color: var(--text-secondary);">Success Rate</div>
             <div id="stat-success-rate" style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 600; color: var(--success-color); margin-top: 4px;">—</div>
@@ -378,7 +378,7 @@
         </div>
 
         <div style="overflow-x: auto; background: rgba(0,0,0,0.2); border-radius: 8px; border: 1px solid rgba(255,255,255,0.08);">
-          <table style="width: 100%; border-collapse: collapse; font-family:'Inter',sans-serif; font-size: 13px; text-align: left;">
+          <table aria-label="Scraped Crawl Results Table" style="width: 100%; border-collapse: collapse; font-family:'Inter',sans-serif; font-size: 13px; text-align: left;">
             <thead>
               <tr style="border-bottom: 1px solid rgba(255,255,255,0.08); background: rgba(255,255,255,0.02);">
                 <th style="padding: 12px 16px; color: var(--text-secondary); font-weight: 500;">URL</th>
@@ -396,12 +396,12 @@
     </section>
 
     <!-- Session Panel -->
-    <section class="section" id="session-panel">
+    <section class="section" id="session-panel" aria-label="Active Browser Sessions">
       <div class="section-header-row">
         <h2 class="section-title">Active sessions</h2>
-        <button id="session-refresh-btn" class="icon-btn" title="Refresh sessions">↻ Refresh</button>
+        <button id="session-refresh-btn" class="icon-btn" title="Refresh sessions" aria-label="Refresh active sessions list">↻ Refresh</button>
       </div>
-      <div id="session-grid" class="session-grid">
+      <div id="session-grid" class="session-grid" role="list" aria-label="Sessions list">
         <div class="empty-state">No active sessions</div>
       </div>
     </section>
@@ -409,16 +409,16 @@
   </main>
 
   <!-- History Section (hidden) -->
-  <section class="section hidden" id="history-section" style="margin: 32px;">
+  <section class="section hidden" id="history-section" style="margin: 32px;" aria-label="Request History Section">
     <div class="section-header-row">
       <h2 class="section-title">Request History</h2>
-      <button id="history-clear-btn" class="icon-btn" title="Clear history">✕ Clear</button>
+      <button id="history-clear-btn" class="icon-btn" title="Clear history" aria-label="Clear all request history">✕ Clear</button>
     </div>
-    <div id="history-list" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;"></div>
+    <div id="history-list" role="list" aria-label="Request history entries" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;"></div>
   </section>
 
   <!-- Toast Container -->
-  <div id="toast-container"></div>
+  <div id="toast-container" role="region" aria-live="polite" aria-label="Notifications"></div>
 
   <!-- Scripts -->
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>

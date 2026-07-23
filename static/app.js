@@ -47,9 +47,9 @@ function createKvRow(containerId, key = "", value = "") {
   row.style.border = "1px solid rgba(255,255,255,0.06)";
 
   row.innerHTML = `
-    <input type="text" class="kv-key-input" placeholder="Key" value="${key}" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-    <input type="text" class="kv-value-input" placeholder="Value" value="${value}" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-    <button class="remove-kv-btn icon-btn" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);">✕</button>
+    <input type="text" class="kv-key-input" placeholder="Key" value="${key}" aria-label="Header or Cookie Key" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+    <input type="text" class="kv-value-input" placeholder="Value" value="${value}" aria-label="Header or Cookie Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+    <button class="remove-kv-btn icon-btn" aria-label="Remove item" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);">✕</button>
   `;
 
   row.querySelector(".remove-kv-btn").addEventListener("click", () => {
@@ -643,7 +643,7 @@ function setupActionBuilder() {
     row.style.border = "1px solid rgba(255,255,255,0.06)";
 
     row.innerHTML = `
-      <select class="action-type-select" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; cursor:pointer; width:100px; flex-shrink:0;">
+      <select class="action-type-select" aria-label="Action Type" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; cursor:pointer; width:100px; flex-shrink:0;">
         <option value="click">Click</option>
         <option value="fill">Fill Input</option>
         <option value="wait">Wait</option>
@@ -651,10 +651,10 @@ function setupActionBuilder() {
         <option value="hover">Hover</option>
         <option value="press">Press Key</option>
       </select>
-      <input type="text" class="action-selector-input" placeholder="CSS Selector" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-      <input type="text" class="action-value-input" placeholder="Value (for Fill/Press)" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-      <input type="number" class="action-duration-input hidden" placeholder="Seconds" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; width:70px; flex-shrink:0;">
-      <button class="remove-action-btn icon-btn" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);">✕</button>
+      <input type="text" class="action-selector-input" placeholder="CSS Selector" aria-label="Action CSS Selector" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+      <input type="text" class="action-value-input" placeholder="Value (for Fill/Press)" aria-label="Action Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+      <input type="number" class="action-duration-input hidden" placeholder="Seconds" aria-label="Action Duration in Seconds" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; width:70px; flex-shrink:0;">
+      <button class="remove-action-btn icon-btn" aria-label="Remove browser action" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);">✕</button>
     `;
 
     const typeSelect = row.querySelector(".action-type-select");
@@ -1104,19 +1104,28 @@ function envRender() {
     } else {
       chipsEl.innerHTML = keys.map((k, i) => `
         <span class="env-chip ${k.value === state.apiKey ? 'env-chip-active' : ''}"
-              data-index="${i}" title="${escapeHtml(k.label)}">
-          <span class="env-chip-dot"></span>
+              data-index="${i}" title="${escapeHtml(k.label)}" role="button" tabindex="0"
+              aria-label="Switch active key to ${escapeHtml(k.label)}"
+              aria-pressed="${k.value === state.apiKey}">
+          <span class="env-chip-dot" aria-hidden="true"></span>
           ${escapeHtml(k.label)}
         </span>
       `).join("");
 
       chipsEl.querySelectorAll(".env-chip").forEach(chip => {
-        chip.addEventListener("click", () => {
+        const activateChip = () => {
           const key = keys[parseInt(chip.dataset.index, 10)];
           if (key) {
             envApplyKey(key.value);
             envRender();
             showToast(`Active key: ${key.label}`, "success", 1800);
+          }
+        };
+        chip.addEventListener("click", activateChip);
+        chip.addEventListener("keydown", (e) => {
+          if (e.key === "Enter" || e.key === " ") {
+            e.preventDefault();
+            activateChip();
           }
         });
       });
@@ -1129,12 +1138,12 @@ function envRender() {
       listEl.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">No saved keys yet.</div>';
     } else {
       listEl.innerHTML = keys.map((k, i) => `
-        <div class="env-saved-row" data-index="${i}">
+        <div class="env-saved-row" data-index="${i}" role="listitem">
           <span class="env-saved-label" title="${escapeHtml(k.label)}">${escapeHtml(k.label)}</span>
-          <span class="env-saved-masked">${envMaskKey(k.value)}</span>
+          <span class="env-saved-masked" aria-label="Masked key value">${envMaskKey(k.value)}</span>
           <button class="env-use-btn ${k.value === state.apiKey ? 'env-use-active' : ''}"
-                  data-index="${i}">${k.value === state.apiKey ? '✓ Active' : 'Use'}</button>
-          <button class="env-delete-btn" data-index="${i}" title="Delete">✕</button>
+                  data-index="${i}" aria-label="Use key ${escapeHtml(k.label)}">${k.value === state.apiKey ? '✓ Active' : 'Use'}</button>
+          <button class="env-delete-btn" data-index="${i}" title="Delete" aria-label="Delete key ${escapeHtml(k.label)}">✕</button>
         </div>
       `).join("");
 
@@ -1179,9 +1188,10 @@ function setupEnvPanel() {
 
   // Toggle manage panel open/close
   toggleBtn.addEventListener("click", () => {
-    const open = !managePanel.classList.contains("hidden");
-    managePanel.classList.toggle("hidden", open);
-    toggleBtn.classList.toggle("active", !open);
+    const isCurrentlyHidden = managePanel.classList.contains("hidden");
+    managePanel.classList.toggle("hidden", !isCurrentlyHidden);
+    toggleBtn.classList.toggle("active", isCurrentlyHidden);
+    toggleBtn.setAttribute("aria-expanded", String(isCurrentlyHidden));
   });
 
   // Add new key
@@ -1422,11 +1432,36 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 
-  // Tab bindings
+  // Tab bindings & Keyboard Navigation
   TABS.forEach(t => {
     const btn = document.getElementById("tab-" + t);
     if (btn) btn.addEventListener("click", () => switchTab(t));
   });
+
+  const tabBar = document.getElementById("tab-bar");
+  if (tabBar) {
+    tabBar.addEventListener("keydown", (e) => {
+      const activeIdx = TABS.indexOf(state.activeTab);
+      if (activeIdx === -1) return;
+      let newIdx = activeIdx;
+      if (e.key === "ArrowRight" || e.key === "ArrowDown") {
+        newIdx = (activeIdx + 1) % TABS.length;
+      } else if (e.key === "ArrowLeft" || e.key === "ArrowUp") {
+        newIdx = (activeIdx - 1 + TABS.length) % TABS.length;
+      } else if (e.key === "Home") {
+        newIdx = 0;
+      } else if (e.key === "End") {
+        newIdx = TABS.length - 1;
+      } else {
+        return;
+      }
+      e.preventDefault();
+      const targetTab = TABS[newIdx];
+      switchTab(targetTab);
+      const targetBtn = document.getElementById("tab-" + targetTab);
+      if (targetBtn) targetBtn.focus();
+    });
+  }
 
   // Copy code blocks utility
   document.querySelectorAll(".copy-btn").forEach(btn => {
