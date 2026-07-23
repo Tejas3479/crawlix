@@ -31,6 +31,43 @@ const API_BASE = ""; // relative path for same-origin requests
 const TABS = ["preview", "screenshot", "markdown", "code", "json"];
 const MAX_HISTORY = 20;
 
+// ─── INPUT VALIDATION HELPERS ────────────────────────────────────────────────
+function isValidHttpUrl(string) {
+  if (!string || typeof string !== "string") return false;
+  try {
+    const url = new URL(string);
+    return url.protocol === "http:" || url.protocol === "https:";
+  } catch (_) {
+    return false;
+  }
+}
+
+function validateJsonSchema(schemaText) {
+  if (!schemaText || !schemaText.trim()) return { valid: true, schema: null };
+  try {
+    const parsed = JSON.parse(schemaText);
+    if (typeof parsed !== "object" || parsed === null || Array.isArray(parsed)) {
+      return { valid: false, error: "JSON Schema must be a valid JSON Object (e.g. { \"type\": \"object\", ... })" };
+    }
+    return { valid: true, schema: parsed };
+  } catch (e) {
+    return { valid: false, error: "Invalid JSON Schema syntax: " + e.message };
+  }
+}
+
+function validateRequestBody(bodyText) {
+  if (!bodyText || !bodyText.trim()) return { valid: true };
+  const trimmed = bodyText.trim();
+  if (trimmed.startsWith("{") || trimmed.startsWith("[")) {
+    try {
+      JSON.parse(trimmed);
+    } catch (e) {
+      return { valid: false, error: "Invalid JSON syntax in Request Body: " + e.message };
+    }
+  }
+  return { valid: true };
+}
+
 // Helper to add a KV row to a container
 function createKvRow(containerId, key = "", value = "") {
   const container = document.getElementById(containerId);
@@ -792,9 +829,23 @@ let activeCrawlPollInterval = null;
 
 // Start a crawl job
 async function startCrawlJob() {
-  const urlVal = document.getElementById("crawl-url-input").value.trim();
+  const crawlUrlInput = document.getElementById("crawl-url-input");
+  let urlVal = crawlUrlInput ? crawlUrlInput.value.trim() : "";
   if (!urlVal) {
     showToast("URL is required to start crawl", "error");
+    if (crawlUrlInput) crawlUrlInput.focus();
+    return;
+  }
+
+  // Auto-prefix protocol if missing (e.g. "example.com")
+  if (!urlVal.startsWith("http://") && !urlVal.startsWith("https://")) {
+    urlVal = "https://" + urlVal;
+    if (crawlUrlInput) crawlUrlInput.value = urlVal;
+  }
+
+  if (!isValidHttpUrl(urlVal)) {
+    showToast("Please enter a valid HTTP or HTTPS crawl URL (e.g. https://example.com)", "error");
+    if (crawlUrlInput) crawlUrlInput.focus();
     return;
   }
 
@@ -1482,21 +1533,43 @@ document.addEventListener("DOMContentLoaded", () => {
   const sendBtn = document.getElementById("send-btn");
   if (sendBtn) {
     sendBtn.addEventListener("click", async () => {
-      const urlVal = document.getElementById("url-input").value.trim();
+      const urlInput = document.getElementById("url-input");
+      let urlVal = urlInput ? urlInput.value.trim() : "";
       if (!urlVal) {
         showToast("URL is required", "error");
+        if (urlInput) urlInput.focus();
         return;
       }
 
-      let jsonSchema = null;
+      // Auto-prefix protocol if missing (e.g., user entered "example.com")
+      if (!urlVal.startsWith("http://") && !urlVal.startsWith("https://")) {
+        urlVal = "https://" + urlVal;
+        if (urlInput) urlInput.value = urlVal;
+      }
+
+      if (!isValidHttpUrl(urlVal)) {
+        showToast("Please enter a valid HTTP or HTTPS URL (e.g. https://example.com)", "error");
+        if (urlInput) urlInput.focus();
+        return;
+      }
+
+      // Validate JSON Schema
       const schemaText = document.getElementById("json-schema-textarea").value.trim();
-      if (schemaText) {
-        try {
-          jsonSchema = JSON.parse(schemaText);
-        } catch (e) {
-          showToast("Invalid JSON Schema format", "error");
-          return;
-        }
+      const schemaResult = validateJsonSchema(schemaText);
+      if (!schemaResult.valid) {
+        showToast(schemaResult.error, "error");
+        document.getElementById("json-schema-textarea").focus();
+        return;
+      }
+      const jsonSchema = schemaResult.schema;
+
+      // Validate Request Body (if JSON)
+      const bodyText = document.getElementById("body-textarea").value.trim();
+      const bodyResult = validateRequestBody(bodyText);
+      if (!bodyResult.valid) {
+        showToast(bodyResult.error, "error");
+        document.getElementById("body-textarea").focus();
+        return;
       }
 
       sendBtn.disabled = true;
