@@ -1,0 +1,50 @@
+# Git
+.git/
+.gitignore
+.github/
+
+# Python virtual environments & bytecode
+.venv/
+venv/
+env/
+ENV/
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+*.egg-info/
+.eggs/
+dist/
+build/
+
+# Data & Persistence
+data/
+*.db
+*.sqlite
+*.log
+logs/
+
+# Development & HackForge
+.hackforge/
+hackforge/
+scratch/
+
+# IDE & OS
+.vscode/
+.idea/
+*.swp
+*.swo
+.DS_Store
+Thumbs.db
+
+# Documentation
+docs/
+CHANGELOG.md
+
+# Node / Frontend Tooling
+node_modules/
+npm-debug.log*
+
+# Playwright & Testing
+playwright-report/
+test-results/
