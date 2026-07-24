@@ -206,6 +206,7 @@ server {
 | Variable | Default | Description |
 |----------|---------|-------------|
 | `API_KEYS` | *(required)* | Comma-separated API keys, e.g. `key1,key2` |
+| `RATE_LIMIT_PER_MINUTE` | `60` | Max requests per minute per IP / API key (set to `0` to disable) |
 | `MAX_PLAYWRIGHT_INSTANCES` | `3` | Max concurrent headless browser instances |
 | `SESSION_TTL_MINUTES` | `30` | How long an idle session lives before cleanup |
 | `MAX_SESSIONS` | `100` | Total max concurrent sessions |

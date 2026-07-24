@@ -1,7 +1,12 @@
 # Crawlix API Reference
 
 **Base URL:** `http://localhost:8000`  
-**Authentication:** All endpoints (except `/health`) require the header `x-api-key: <your-key>`
+**Authentication:** All endpoints (except `/api/health`) require the header `x-api-key: <your-key>`  
+**Rate Limiting:** Default limit is 60 requests per minute per IP / API key. Rate limit status is returned in every response header:
+- `X-RateLimit-Limit`: Maximum requests per window
+- `X-RateLimit-Remaining`: Requests remaining in current window
+- `X-RateLimit-Reset`: Seconds remaining until reset
+- Returns HTTP `429 Too Many Requests` with a `Retry-After` header when limit is exceeded.
 
 ---
 

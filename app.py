@@ -7,7 +7,7 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Literal, Optional
 
-from fastapi import FastAPI, Depends, HTTPException, Header
+from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -46,26 +46,86 @@ async def verify_api_key(
     if not token or token not in VALID_KEYS:
          raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
+
+# RATE LIMITER
+RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+
+class RateLimiter:
+    """
+    In-memory sliding window rate limiter per client IP or API key.
+    """
+    def __init__(self, requests_per_minute: int = RATE_LIMIT_PER_MINUTE, window_seconds: int = 60):
+        self.rpm = requests_per_minute
+        self.window = window_seconds
+        self.requests: dict[str, list[float]] = {}
+        self._lock = asyncio.Lock()
+
+    async def check(self, key: str) -> tuple[bool, int, int]:
+        """
+        Returns (is_limited, remaining_requests, reset_seconds)
+        """
+        if self.rpm <= 0:
+            return False, 9999, 0
+
+        now = time.monotonic()
+        async with self._lock:
+            timestamps = self.requests.get(key, [])
+            cutoff = now - self.window
+            timestamps = [t for t in timestamps if t > cutoff]
+
+            if len(timestamps) >= self.rpm:
+                oldest = timestamps[0]
+                reset_seconds = max(1, int(self.window - (now - oldest)))
+                self.requests[key] = timestamps
+                return True, 0, reset_seconds
+
+            timestamps.append(now)
+            self.requests[key] = timestamps
+            remaining = self.rpm - len(timestamps)
+            return False, remaining, self.window
+
+    async def cleanup_loop(self):
+        try:
+            while True:
+                await asyncio.sleep(120)
+                now = time.monotonic()
+                cutoff = now - self.window
+                async with self._lock:
+                    to_delete = []
+                    for key, ts_list in self.requests.items():
+                        filtered = [t for t in ts_list if t > cutoff]
+                        if filtered:
+                            self.requests[key] = filtered
+                        else:
+                            to_delete.append(key)
+                    for k in to_delete:
+                        del self.requests[k]
+        except asyncio.CancelledError:
+            pass
+
+rate_limiter = RateLimiter()
+
+
 # LIFESPAN
 _cleanup_task: asyncio.Task | None = None
+_rate_limit_task: asyncio.Task | None = None
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    global _cleanup_task
+    global _cleanup_task, _rate_limit_task
     # STARTUP
-    await playwright_mgr.start()
+    await playwright_mgr.initialize()
     _cleanup_task = asyncio.create_task(session_manager.cleanup_loop())
-    logger.info("Crawlix application started and Playwright engine initialized.")
+    _rate_limit_task = asyncio.create_task(rate_limiter.cleanup_loop())
+    logger.info("Crawlix application started, Playwright engine initialized, and rate limiter active.")
     yield
     # SHUTDOWN
     if _cleanup_task:
         _cleanup_task.cancel()
-        try:
-            await _cleanup_task
-        except asyncio.CancelledError:
-            pass
+    if _rate_limit_task:
+        _rate_limit_task.cancel()
     await session_manager.close_all()
-    await playwright_mgr.stop()
+    await playwright_mgr.close()
     logger.info("Crawlix application shutdown complete.")
 
 # APP INIT
@@ -78,6 +138,40 @@ app.add_middleware(
     allow_headers=["*"],
     allow_credentials=False
 )
+
+@app.middleware("http")
+async def rate_limit_middleware(request: Request, call_next):
+    path = request.url.path
+    # Exempt health check and static asset requests from rate limiting
+    if path == "/api/health" or path.startswith("/static") or ("." in path.split("/")[-1] and not path.startswith("/api")):
+        return await call_next(request)
+
+    forwarded = request.headers.get("x-forwarded-for")
+    client_ip = forwarded.split(",")[0].strip() if forwarded else (request.client.host if request.client else "127.0.0.1")
+    api_key = request.headers.get("x-api-key") or ""
+    client_key = f"key:{api_key}" if api_key else f"ip:{client_ip}"
+
+    is_limited, remaining, reset_sec = await rate_limiter.check(client_key)
+    if is_limited:
+        logger.warning(f"Rate limit exceeded for client: {client_key} on path {path}")
+        return JSONResponse(
+            status_code=429,
+            content={"detail": "Too many requests. Rate limit exceeded."},
+            headers={
+                "X-RateLimit-Limit": str(rate_limiter.rpm),
+                "X-RateLimit-Remaining": "0",
+                "X-RateLimit-Reset": str(reset_sec),
+                "Retry-After": str(reset_sec)
+            }
+        )
+
+    response = await call_next(request)
+    if rate_limiter.rpm > 0:
+        response.headers["X-RateLimit-Limit"] = str(rate_limiter.rpm)
+        response.headers["X-RateLimit-Remaining"] = str(remaining)
+        response.headers["X-RateLimit-Reset"] = str(reset_sec)
+    return response
+
 
 # PYDANTIC SCHEMAS
 class ProxyConfig(BaseModel):

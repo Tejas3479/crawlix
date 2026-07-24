@@ -94,6 +94,12 @@ class PlaywrightManager:
                     ]
                 )
 
+    async def start(self):
+        await self.initialize()
+
+    async def stop(self):
+        await self.close()
+
     async def close(self):
         async with self._init_lock:
             if self.browser:
