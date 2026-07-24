@@ -21,30 +21,71 @@ from markdownify import markdownify
 import httpx
 
 
+# RESTRICTED IP NETWORKS & HOSTNAMES FOR ENHANCED SSRF PROTECTION
+RESTRICTED_NETWORKS = [
+    ipaddress.ip_network("10.0.0.0/8"),
+    ipaddress.ip_network("172.16.0.0/12"),
+    ipaddress.ip_network("192.168.0.0/16"),
+    ipaddress.ip_network("127.0.0.0/8"),
+    ipaddress.ip_network("169.254.0.0/16"),       # AWS/Azure IMDS & Link-Local
+    ipaddress.ip_network("100.64.0.0/10"),        # CGNAT & Cloud Internal
+    ipaddress.ip_network("100.100.100.200/32"),   # Alibaba IMDS
+    ipaddress.ip_network("10.96.0.0/12"),         # Kubernetes Service CIDR
+    ipaddress.ip_network("0.0.0.0/8"),
+    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("fc00::/7"),             # IPv6 Unique Local
+    ipaddress.ip_network("fe80::/10")             # IPv6 Link-Local
+]
+
+RESTRICTED_HOSTNAME_SUFFIXES = (
+    ".internal", ".local", ".localhost", ".cluster.local", ".localdomain"
+)
+
+RESTRICTED_HOSTNAMES = {
+    "localhost", "metadata.google.internal", "metadata.gcp.internal"
+}
+
+
+def _is_ip_restricted(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
+        return True
+    return any(ip in net for net in RESTRICTED_NETWORKS)
+
+
 async def is_ssrf_safe(url: str) -> bool:
-    """Async-safe SSRF check. Uses executor for DNS resolution to avoid blocking the event loop."""
+    """Enhanced async-safe SSRF check validating URL schemes, cloud metadata IPs, and restricted network ranges."""
     if os.getenv("DISABLE_SSRF_CHECK") == "true":
         return True
     try:
         parsed = urlparse(url)
+        # 1. Scheme Validation
+        if not parsed.scheme or parsed.scheme.lower() not in ("http", "https"):
+            return False
+
         host = parsed.hostname
         if not host:
             return False
 
-        # Check if it's already an IP address (no DNS needed)
+        host_lower = host.lower().strip()
+
+        # 2. Hostname / Domain Blocklist
+        if host_lower in RESTRICTED_HOSTNAMES or host_lower.endswith(RESTRICTED_HOSTNAME_SUFFIXES):
+            return False
+
+        # 3. Direct IP Address Check
         try:
-            ip = ipaddress.ip_address(host)
-            return not (ip.is_private or ip.is_loopback or ip.is_link_local)
+            ip = ipaddress.ip_address(host_lower)
+            return not _is_ip_restricted(ip)
         except ValueError:
             pass
 
-        # Resolve hostname in thread executor to avoid blocking the event loop
+        # 4. Async DNS Resolution Check
         loop = asyncio.get_event_loop()
-        addr_info = await loop.run_in_executor(None, socket.getaddrinfo, host, None)
+        addr_info = await loop.run_in_executor(None, socket.getaddrinfo, host_lower, None)
         for _family, _type, _proto, _canonname, sockaddr in addr_info:
             ip_str = sockaddr[0]
             ip = ipaddress.ip_address(ip_str)
-            if ip.is_private or ip.is_loopback or ip.is_link_local:
+            if _is_ip_restricted(ip):
                 return False
         return True
     except Exception as e:
