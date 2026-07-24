@@ -698,8 +698,11 @@ async def process_content(
                         logger.warning(f"LLM API request failed: {llm_err}. Retrying in {wait}s...")
                         await asyncio.sleep(wait)
                     else:
-                        logger.error(f"LLM API request failed after 3 attempts. Last error: {llm_err}")
-                        raise llm_err
+                        logger.error(f"LLM API request ({llm_provider}) failed after 3 attempts. Last error: {llm_err}")
+                        return {
+                            "error": "llm_api_failed",
+                            "error_message": f"LLM API request ({llm_provider}) failed after 3 attempts: {str(llm_err)}"
+                        }
             
             result = result.strip()
             if result.startswith("```"):
@@ -960,19 +963,42 @@ async def run_fetch(
 
         except Exception as e:
             last_error = e
+            e_str = str(e)
+            err_type = type(e).__name__
+
+            # Specific Error Classification
+            if current_proxy and any(k in e_str.lower() or k in err_type.lower() for k in ["proxy", "tunnel", "socks", "407"]):
+                error_code = "proxy_error"
+                error_msg = f"Proxy connection failed for '{sanitize_proxy_url(current_proxy)}': {e_str}"
+            elif render_js and any(k in e_str.lower() or k in err_type.lower() for k in ["playwright", "browser", "chromium", "executable", "context"]):
+                error_code = "browser_engine_error"
+                error_msg = f"Playwright browser engine error: {e_str}"
+            elif any(k in e_str.lower() or k in err_type.lower() for k in ["timeout", "timed out", "navigation timeout"]):
+                error_code = "request_timeout"
+                error_msg = f"Request to target URL timed out after {timeout} seconds."
+            elif any(k in e_str.lower() or k in err_type.lower() for k in ["getaddrinfo", "gaierror", "nameresolution", "dns", "servname"]):
+                error_code = "dns_resolution_failed"
+                error_msg = f"Could not resolve host domain for URL '{sanitize_url(url)}'."
+            elif any(k in e_str.lower() or k in err_type.lower() for k in ["ssl", "certificate", "cert", "handshake"]):
+                error_code = "ssl_handshake_failed"
+                error_msg = f"SSL/TLS handshake failed for '{sanitize_url(url)}': {e_str}"
+            else:
+                error_code = "fetch_failed"
+                error_msg = f"Fetch failed: {e_str}"
+
             if attempt < max_retries:
                 wait = 1.0 * (2 ** attempt) + random.uniform(0, 1)
-                logger.warning(f"Exception encountered: {e}. Retrying in {wait:.2f}s...")
+                logger.warning(f"Fetch attempt {attempt + 1} failed ({error_code}). Retrying in {wait:.2f}s...")
                 await asyncio.sleep(wait)
             else:
-                logger.error(f"Max retries exceeded for URL {url}. Last exception: {e}")
+                logger.error(f"Max retries exceeded for URL {sanitize_url(url)}. Last error [{error_code}]: {error_msg}")
                 return {
-                    "error": "max_retries_exceeded",
-                    "error_message": str(e),
+                    "error": error_code,
+                    "error_message": error_msg,
                     "last_status": last_status,
                     "retries_used": attempt,
                     "final_url": final_url,
-                    "status_code": status_code,
+                    "status_code": status_code or 502,
                     "content": None,
                     "raw_html": "",
                     "screenshot": None,
