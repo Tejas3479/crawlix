@@ -7,12 +7,15 @@ from contextlib import asynccontextmanager
 from datetime import datetime
 from typing import Literal, Optional
 
+import json
+from urllib.parse import urlparse
+
 from fastapi import FastAPI, Depends, HTTPException, Header, Request
 from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl
+from pydantic import BaseModel, HttpUrl, Field, field_validator
 
 from fetcher import playwright_mgr, session_manager, run_fetch, crawl_manager, SensitiveDataFilter
 
@@ -178,46 +181,97 @@ async def rate_limit_middleware(request: Request, call_next):
     return response
 
 
+# ALLOWED LLM MODELS ALLOWLIST
+ALLOWED_LLM_MODELS = {
+    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini",
+    "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229",
+    "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"
+}
+
 # PYDANTIC SCHEMAS
 class ProxyConfig(BaseModel):
-    url: str                          # full proxy URL e.g. "http://user:pass@host:port"
-    country_code: Optional[str] = None
+    url: str = Field(..., max_length=2000, description="Full proxy URL e.g. http://user:pass@host:port")
+    country_code: Optional[str] = Field(None, max_length=10)
+
+    @field_validator("url")
+    @classmethod
+    def validate_proxy_url(cls, v: str) -> str:
+        v_str = v.strip()
+        parsed = urlparse(v_str)
+        if parsed.scheme.lower() not in ("http", "https", "socks5", "socks4", "socks5h"):
+            raise ValueError("Proxy URL scheme must be http, https, socks5, or socks4")
+        if not parsed.netloc:
+            raise ValueError("Invalid proxy URL format")
+        return v_str
+
 
 class ActionConfig(BaseModel):
     type: Literal["click", "wait", "scroll", "fill", "hover", "press"]
-    selector: Optional[str] = None
-    value: Optional[str] = None
-    duration: Optional[int] = None
+    selector: Optional[str] = Field(None, max_length=500)
+    value: Optional[str] = Field(None, max_length=2000)
+    duration: Optional[int] = Field(None, ge=0, le=60)
+
 
 class FetchRequest(BaseModel):
     url: HttpUrl
-    method: str = "GET"
-    headers: dict[str, str] = {}
-    cookies: dict[str, str] = {}
-    body: Optional[str] = None
+    method: str = Field("GET", max_length=10)
+    headers: dict[str, str] = Field(default_factory=dict)
+    cookies: dict[str, str] = Field(default_factory=dict)
+    body: Optional[str] = Field(None, max_length=10_000_000) # 10MB max body
     json_body: Optional[dict] = None
-    session_id: Optional[str] = None
+    session_id: Optional[str] = Field(None, max_length=100)
     render_js: bool = False
     scroll: bool = False
     output_format: Literal["html", "markdown", "structured"] = "html"
     strip_links: bool = False
     proxy: Optional[ProxyConfig] = None
-    max_retries: int = 2
-    timeout: int = 30
-    impersonate: str = "chrome120"
-    llm_api_key: Optional[str] = None
+    max_retries: int = Field(2, ge=0, le=5)
+    timeout: int = Field(30, ge=1, le=120)
+    impersonate: str = Field("chrome120", max_length=50)
+    llm_api_key: Optional[str] = Field(None, max_length=500)
     llm_provider: Literal["openai", "anthropic", "gemini"] = "openai"
     json_schema: Optional[dict] = None
-    wait_for_selector: Optional[str] = None
-    wait_timeout: int = 30
-    css_selector: Optional[str] = None
-    llm_model: Optional[str] = None
-    actions: Optional[list[ActionConfig]] = None
+    wait_for_selector: Optional[str] = Field(None, max_length=500)
+    wait_timeout: int = Field(30, ge=1, le=120)
+    css_selector: Optional[str] = Field(None, max_length=500)
+    llm_model: Optional[str] = Field(None, max_length=100)
+    actions: Optional[list[ActionConfig]] = Field(None, max_length=20)
     screenshot: bool = False
     screenshot_format: Literal["png", "jpeg"] = "png"
-    extraction_prompt: Optional[str] = None
+    extraction_prompt: Optional[str] = Field(None, max_length=5000)
     wait_until: Literal["domcontentloaded", "load", "networkidle"] = "networkidle"
     stealth: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: HttpUrl) -> HttpUrl:
+        scheme = v.scheme.lower() if v.scheme else ""
+        if scheme not in ("http", "https"):
+            raise ValueError("Target URL scheme must be http or https")
+        return v
+
+    @field_validator("llm_model")
+    @classmethod
+    def validate_llm_model(cls, v: Optional[str]) -> Optional[str]:
+        if v is None:
+            return None
+        v_clean = v.strip()
+        if not v_clean:
+            return None
+        if v_clean not in ALLOWED_LLM_MODELS and not any(v_clean.startswith(prefix) for prefix in ("gpt-", "claude-", "gemini-", "o1", "o3")):
+            raise ValueError(f"LLM model '{v_clean}' is not supported. Must be a valid OpenAI, Anthropic, or Gemini model.")
+        return v_clean
+
+    @field_validator("json_schema")
+    @classmethod
+    def validate_json_schema_size(cls, v: Optional[dict]) -> Optional[dict]:
+        if v is None:
+            return None
+        serialized = json.dumps(v)
+        if len(serialized) > 50_000:
+            raise ValueError("JSON schema size exceeds maximum limit of 50KB")
+        return v
+
 
 class FetchResponse(BaseModel):
     success: bool
@@ -233,18 +287,27 @@ class FetchResponse(BaseModel):
     screenshot: Optional[str] = None
     timing: Optional[dict] = None
 
+
 class CrawlRequest(BaseModel):
     url: HttpUrl
-    max_pages: int = 10
-    max_depth: int = 3
+    max_pages: int = Field(10, ge=1, le=100)
+    max_depth: int = Field(3, ge=1, le=10)
     render_js: bool = False
     output_format: Literal["html", "markdown", "structured"] = "markdown"
     strip_links: bool = False
-    css_selector: Optional[str] = None
+    css_selector: Optional[str] = Field(None, max_length=500)
     limit_domain: bool = True
-    actions: Optional[list[ActionConfig]] = None
-    extraction_prompt: Optional[str] = None
+    actions: Optional[list[ActionConfig]] = Field(None, max_length=20)
+    extraction_prompt: Optional[str] = Field(None, max_length=5000)
     stealth: bool = False
+
+    @field_validator("url")
+    @classmethod
+    def validate_url_scheme(cls, v: HttpUrl) -> HttpUrl:
+        scheme = v.scheme.lower() if v.scheme else ""
+        if scheme not in ("http", "https"):
+            raise ValueError("Crawl target URL scheme must be http or https")
+        return v
 
 # POST /fetch
 @app.post("/fetch", response_model=FetchResponse, dependencies=[Depends(verify_api_key)])
