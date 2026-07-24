@@ -14,11 +14,16 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, HttpUrl
 
-from fetcher import playwright_mgr, session_manager, run_fetch, crawl_manager
+from fetcher import playwright_mgr, session_manager, run_fetch, crawl_manager, SensitiveDataFilter
 
-# Set up logging configuration (single source of truth — fetcher.py uses getLogger only)
+# Set up logging configuration with SensitiveDataFilter
 logger = logging.getLogger("crawlix.app")
-logging.basicConfig(level=logging.INFO, format="%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+logger.addFilter(SensitiveDataFilter())
+
+log_handler = logging.StreamHandler()
+log_handler.addFilter(SensitiveDataFilter())
+log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s"))
+logging.basicConfig(level=logging.INFO, handlers=[log_handler])
 
 # API KEY AUTH
 VALID_KEYS: set[str] = set(
