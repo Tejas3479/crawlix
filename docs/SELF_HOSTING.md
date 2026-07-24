@@ -207,7 +207,11 @@ server {
 |----------|---------|-------------|
 | `API_KEYS` | *(required)* | Comma-separated API keys, e.g. `key1,key2` |
 | `RATE_LIMIT_PER_MINUTE` | `60` | Max requests per minute per IP / API key (set to `0` to disable) |
+| `MAX_REQUEST_BODY_SIZE` | `10485760` (10MB) | Hard cap on HTTP request payload size in bytes |
+| `MAX_CRAWL_PAGES` | `100` | Hard cap on max pages per crawl job |
+| `MAX_CRAWL_DEPTH` | `10` | Hard cap on max crawl link depth |
 | `MAX_PLAYWRIGHT_INSTANCES` | `3` | Max concurrent headless browser instances |
+| `PLAYWRIGHT_SLOT_TIMEOUT` | `30` | Timeout in seconds waiting for an available browser slot |
 | `SESSION_TTL_MINUTES` | `30` | How long an idle session lives before cleanup |
 | `MAX_SESSIONS` | `100` | Total max concurrent sessions |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins, e.g. `https://myapp.com` |

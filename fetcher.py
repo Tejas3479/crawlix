@@ -108,6 +108,7 @@ logger.addFilter(SensitiveDataFilter())
 
 # CONSTANTS
 MAX_PLAYWRIGHT_INSTANCES = int(os.getenv("MAX_PLAYWRIGHT_INSTANCES", "3"))
+PLAYWRIGHT_SLOT_TIMEOUT = int(os.getenv("PLAYWRIGHT_SLOT_TIMEOUT", "30"))
 SESSION_TTL_MINUTES = int(os.getenv("SESSION_TTL_MINUTES", "30"))
 MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 
@@ -165,10 +166,14 @@ class PlaywrightManager:
     async def acquire_context(self, proxy_url: str | None = None, user_headers: dict | None = None, stealth: bool = False):
         await self.initialize()
 
+        start_wait = time.monotonic()
         async with self._slots_lock:
             if self.slots_free <= 0:
                 logger.warning("Max Playwright instances reached. Waiting for available slot...")
             while self.slots_free <= 0:
+                if time.monotonic() - start_wait > PLAYWRIGHT_SLOT_TIMEOUT:
+                    logger.error(f"Playwright slot acquisition timed out after {PLAYWRIGHT_SLOT_TIMEOUT}s.")
+                    raise TimeoutError(f"All Playwright browser slots are occupied. Acquisition timed out after {PLAYWRIGHT_SLOT_TIMEOUT}s.")
                 await asyncio.sleep(0.1)
             self.slots_free -= 1
             _free = self.slots_free

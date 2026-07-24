@@ -55,8 +55,11 @@ async def verify_api_key(
          raise HTTPException(status_code=401, detail="Invalid or missing API key")
 
 
-# RATE LIMITER
+# RATE LIMITER & RESOURCE LIMIT CONSTANTS
 RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
+MAX_BODY_SIZE_BYTES = int(os.getenv("MAX_REQUEST_BODY_SIZE", str(10 * 1024 * 1024))) # 10MB
+MAX_SERVER_CRAWL_PAGES = int(os.getenv("MAX_CRAWL_PAGES", "100"))
+MAX_SERVER_CRAWL_DEPTH = int(os.getenv("MAX_CRAWL_DEPTH", "10"))
 
 class RateLimiter:
     """
@@ -148,7 +151,21 @@ app.add_middleware(
 )
 
 @app.middleware("http")
-async def rate_limit_middleware(request: Request, call_next):
+async def resource_limits_middleware(request: Request, call_next):
+    # Payload size limit check
+    content_length = request.headers.get("content-length")
+    if content_length:
+        try:
+            if int(content_length) > MAX_BODY_SIZE_BYTES:
+                client_ip = request.client.host if request.client else "127.0.0.1"
+                logger.warning(f"Rejected oversized payload ({content_length} bytes) from {client_ip}")
+                return JSONResponse(
+                    status_code=413,
+                    content={"detail": f"Request payload size exceeds maximum server limit of {MAX_BODY_SIZE_BYTES // (1024 * 1024)}MB."}
+                )
+        except ValueError:
+            pass
+
     path = request.url.path
     # Exempt health check and static asset requests from rate limiting
     if path == "/api/health" or path.startswith("/static") or ("." in path.split("/")[-1] and not path.startswith("/api")):
@@ -307,6 +324,20 @@ class CrawlRequest(BaseModel):
         scheme = v.scheme.lower() if v.scheme else ""
         if scheme not in ("http", "https"):
             raise ValueError("Crawl target URL scheme must be http or https")
+        return v
+
+    @field_validator("max_pages")
+    @classmethod
+    def validate_max_pages(cls, v: int) -> int:
+        if v > MAX_SERVER_CRAWL_PAGES:
+            raise ValueError(f"Requested max_pages ({v}) exceeds server limit of {MAX_SERVER_CRAWL_PAGES}")
+        return v
+
+    @field_validator("max_depth")
+    @classmethod
+    def validate_max_depth(cls, v: int) -> int:
+        if v > MAX_SERVER_CRAWL_DEPTH:
+            raise ValueError(f"Requested max_depth ({v}) exceeds server limit of {MAX_SERVER_CRAWL_DEPTH}")
         return v
 
 # POST /fetch
