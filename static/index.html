@@ -417,6 +417,14 @@
     <div id="history-list" role="list" aria-label="Request history entries" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;"></div>
   </section>
 
+  <!-- Lightbox Overlay for Fullscreen Screenshot Pan/Zoom -->
+  <div id="lightbox-overlay" class="lightbox-overlay" role="dialog" aria-modal="true" aria-label="Fullscreen Screenshot Preview">
+    <div class="lightbox-content">
+      <button id="lightbox-close-btn" class="lightbox-close-btn" aria-label="Close Lightbox Preview">✕</button>
+      <img id="lightbox-img" class="lightbox-image" src="" alt="Fullscreen Website Screenshot Preview">
+    </div>
+  </div>
+
   <!-- Toast Container -->
   <div id="toast-container" role="region" aria-live="polite" aria-label="Notifications"></div>
 
@@ -427,3 +435,4 @@
   <script src="app.js"></script>
 </body>
 </html>
+

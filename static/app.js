@@ -1665,4 +1665,67 @@ document.addEventListener("DOMContentLoaded", () => {
   visibleInterval(checkHealth, 30000);
   visibleInterval(renderSessions, 30000);
   setupCrawlPolling();
+
+  // Initialize Framer Motion Controllers
+  initFramerMotion();
 });
+
+/* ─── Framer Motion & Visual Effects Controller ────────────────────────── */
+function initFramerMotion() {
+  // 1. Mouse-Tracking Radial Glow Overlay
+  document.querySelectorAll(".glow-card, .request-panel, .options-grid, .meta-bar").forEach(card => {
+    card.classList.add("glow-card");
+    card.addEventListener("mousemove", (e) => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      card.style.setProperty("--mouse-x", `${x}px`);
+      card.style.setProperty("--mouse-y", `${y}px`);
+    });
+  });
+
+  // 2. 3D Perspective Card Tilt
+  document.querySelectorAll(".tilt-card, .option-group, .action-item").forEach(card => {
+    card.classList.add("tilt-card");
+    card.addEventListener("mousemove", (e) => {
+      const rect = card.getBoundingClientRect();
+      const x = e.clientX - rect.left;
+      const y = e.clientY - rect.top;
+      const centerX = rect.width / 2;
+      const centerY = rect.height / 2;
+      const rotateX = ((y - centerY) / centerY) * -4;
+      const rotateY = ((x - centerX) / centerX) * 4;
+      card.style.transform = `perspective(1000px) rotateX(${rotateX}deg) rotateY(${rotateY}deg) scale3d(1.01, 1.01, 1.01)`;
+    });
+    card.addEventListener("mouseleave", () => {
+      card.style.transform = "perspective(1000px) rotateX(0deg) rotateY(0deg) scale3d(1, 1, 1)";
+    });
+  });
+
+  // 3. Screenshot Lightbox Zoom Controls
+  const lightboxOverlay = document.getElementById("lightbox-overlay");
+  const lightboxImg = document.getElementById("lightbox-img");
+  const lightboxCloseBtn = document.getElementById("lightbox-close-btn");
+
+  if (lightboxOverlay && lightboxImg) {
+    document.addEventListener("click", (e) => {
+      const target = e.target;
+      if (target && target.tagName === "IMG" && (target.classList.contains("screenshot-img") || target.closest("#tab-screenshot"))) {
+        lightboxImg.src = target.src;
+        lightboxOverlay.classList.add("active");
+      }
+    });
+
+    const closeLightbox = () => lightboxOverlay.classList.remove("active");
+    if (lightboxCloseBtn) lightboxCloseBtn.addEventListener("click", closeLightbox);
+    lightboxOverlay.addEventListener("click", (e) => {
+      if (e.target === lightboxOverlay) closeLightbox();
+    });
+    document.addEventListener("keydown", (e) => {
+      if (e.key === "Escape" && lightboxOverlay.classList.contains("active")) {
+        closeLightbox();
+      }
+    });
+  }
+}
+

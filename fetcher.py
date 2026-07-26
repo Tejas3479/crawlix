@@ -1,7 +1,13 @@
+import sys
 import asyncio
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import base64
 import datetime
 from datetime import datetime as dt_class, timezone
+
 import json
 import os
 import random

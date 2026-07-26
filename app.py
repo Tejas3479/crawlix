@@ -1,5 +1,10 @@
+import sys
 import asyncio
 import os
+
+if sys.platform == "win32":
+    asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
+
 import time
 import uuid
 import logging
@@ -125,10 +130,13 @@ _rate_limit_task: asyncio.Task | None = None
 async def lifespan(app: FastAPI):
     global _cleanup_task, _rate_limit_task
     # STARTUP
-    await playwright_mgr.initialize()
+    try:
+        await playwright_mgr.initialize()
+    except Exception as e:
+        logger.warning(f"Playwright pre-initialization skipped on startup ({e}). Will initialize lazily when JS rendering is requested.")
     _cleanup_task = asyncio.create_task(session_manager.cleanup_loop())
     _rate_limit_task = asyncio.create_task(rate_limiter.cleanup_loop())
-    logger.info("Crawlix application started, Playwright engine initialized, and rate limiter active.")
+    logger.info("Crawlix application started, engine initialized, and rate limiter active.")
     yield
     # SHUTDOWN
     if _cleanup_task:
@@ -470,3 +478,9 @@ async def delete_crawl(crawl_id: str):
 # Mount static files
 if os.path.isdir("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
+
+if __name__ == "__main__":
+    import uvicorn
+    uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
+
+

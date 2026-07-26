@@ -1272,3 +1272,187 @@ input, select, textarea {
   background: rgba(239, 68, 68, 0.25);
   color: #fff;
 }
+
+/* ─── Framer Motion & Visual Effects System ────────────────────────────────── */
+:root {
+  --ease-spring: cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  --ease-out-expo: cubic-bezier(0.16, 1, 0.3, 1);
+  --ease-in-out-cubic: cubic-bezier(0.65, 0, 0.35, 1);
+}
+
+/* Framer Cursor-Tracking Radial Glow Card */
+.glow-card {
+  position: relative;
+  overflow: hidden;
+  transition: transform 0.25s var(--ease-out-expo), box-shadow 0.25s var(--ease-out-expo), border-color 0.25s ease;
+}
+
+.glow-card::before {
+  content: "";
+  position: absolute;
+  top: var(--mouse-y, -100px);
+  left: var(--mouse-x, -100px);
+  width: 250px;
+  height: 250px;
+  background: radial-gradient(circle, rgba(124, 108, 240, 0.18) 0%, rgba(79, 195, 247, 0.05) 45%, transparent 70%);
+  transform: translate(-50%, -50%);
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+  z-index: 1;
+}
+
+.glow-card:hover::before {
+  opacity: 1;
+}
+
+/* Framer 3D Perspective Tilt Card */
+.tilt-card {
+  perspective: 1000px;
+  transform-style: preserve-3d;
+  will-change: transform;
+  transition: transform 0.2s var(--ease-out-expo);
+}
+
+/* Framer Tab Bar Spring Indicator */
+.tablist-wrapper {
+  position: relative;
+}
+
+.tab-slider-pill {
+  position: absolute;
+  top: 4px;
+  bottom: 4px;
+  background: rgba(124, 108, 240, 0.18);
+  border: 1px solid rgba(124, 108, 240, 0.4);
+  border-radius: 8px;
+  transition: all 0.35s var(--ease-spring);
+  pointer-events: none;
+  z-index: 0;
+  box-shadow: 0 0 12px rgba(124, 108, 240, 0.25);
+}
+
+.tab-btn {
+  position: relative;
+  z-index: 1;
+}
+
+/* Framer Staggered Fade Up Entrance Animation */
+@keyframes staggerFadeUp {
+  0% {
+    opacity: 0;
+    transform: translateY(16px) scale(0.98);
+  }
+  100% {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+.animate-stagger {
+  animation: staggerFadeUp 0.45s var(--ease-out-expo) forwards;
+  opacity: 0;
+}
+
+/* Framer Skeleton Shimmer Loader */
+@keyframes shimmer {
+  0% {
+    background-position: -200% 0;
+  }
+  100% {
+    background-position: 200% 0;
+  }
+}
+
+.skeleton-loader {
+  background: linear-gradient(
+    90deg,
+    rgba(255, 255, 255, 0.03) 0%,
+    rgba(255, 255, 255, 0.08) 50%,
+    rgba(255, 255, 255, 0.03) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.6s infinite linear;
+  border-radius: 6px;
+}
+
+.skeleton-box {
+  height: 20px;
+  width: 100%;
+  margin-bottom: 8px;
+}
+.skeleton-box.short {
+  width: 60%;
+}
+.skeleton-box.tall {
+  height: 80px;
+}
+
+/* Framer Screenshot Lightbox Modal */
+.lightbox-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(5, 5, 10, 0.85);
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  z-index: 9999;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  pointer-events: none;
+  transition: opacity 0.3s var(--ease-out-expo);
+  padding: 24px;
+}
+
+.lightbox-overlay.active {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.lightbox-content {
+  position: relative;
+  max-width: 90vw;
+  max-height: 88vh;
+  transform: scale(0.92) translateY(12px);
+  transition: transform 0.35s var(--ease-spring);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+}
+
+.lightbox-overlay.active .lightbox-content {
+  transform: scale(1) translateY(0);
+}
+
+.lightbox-image {
+  max-width: 100%;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.15);
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.6), 0 0 30px rgba(124, 108, 240, 0.2);
+}
+
+.lightbox-close-btn {
+  position: absolute;
+  top: -48px;
+  right: 0;
+  background: rgba(255, 255, 255, 0.1);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  color: var(--text-primary);
+  font-size: 18px;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s ease;
+}
+.lightbox-close-btn:hover {
+  background: rgba(255, 255, 255, 0.25);
+  transform: scale(1.1);
+}
+
