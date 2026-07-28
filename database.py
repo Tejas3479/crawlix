@@ -17,6 +17,12 @@ async_session_maker = sessionmaker(
 )
 
 async def init_db():
+    if "sqlite" in DATABASE_URL:
+        db_path = DATABASE_URL.split(":///")[-1]
+        if ("/" in db_path or "\\" in db_path) and not db_path.startswith(":memory:"):
+            dir_name = os.path.dirname(db_path)
+            if dir_name:
+                os.makedirs(dir_name, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
 
