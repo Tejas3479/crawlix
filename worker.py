@@ -119,19 +119,22 @@ async def process_destinations(results: list, destination_ids: list[str]):
                     
             elif dest.type == "weaviate":
                 import weaviate
-                # Very basic weaviate integration
-                client = weaviate.Client(url=dest.config.get("url", ""), auth_client_secret=weaviate.AuthApiKey(api_key=dest.config.get("api_key", "")))
-                class_name = dest.config.get("class_name", "Document")
+                # Wrap synchronous Weaviate calls to prevent event loop blocking
+                def _push_to_weaviate():
+                    client = weaviate.Client(url=dest.config.get("url", ""), auth_client_secret=weaviate.AuthApiKey(api_key=dest.config.get("api_key", "")))
+                    class_name = dest.config.get("class_name", "Document")
+                    
+                    with client.batch as batch:
+                        for i, r in enumerate(results):
+                            properties = {
+                                "content": r.get("content", ""),
+                                "url": r.get("url", ""),
+                                "title": r.get("title", "")
+                            }
+                            vector = embeddings[i] if i < len(embeddings) and embeddings[i] else None
+                            batch.add_data_object(properties, class_name, vector=vector)
                 
-                with client.batch as batch:
-                    for i, r in enumerate(results):
-                        properties = {
-                            "content": r.get("content", ""),
-                            "url": r.get("url", ""),
-                            "title": r.get("title", "")
-                        }
-                        vector = embeddings[i] if i < len(embeddings) and embeddings[i] else None
-                        batch.add_data_object(properties, class_name, vector=vector)
+                await asyncio.to_thread(_push_to_weaviate)
                 logger.info("Pushed rows to Weaviate")
                     
         except Exception as e:
