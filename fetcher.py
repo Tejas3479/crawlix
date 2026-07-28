@@ -604,96 +604,116 @@ async def process_content(
             schema_str = json.dumps(json_schema) if json_schema else "Return a structured JSON object reflecting the extracted data."
             user = f"Schema:\n{schema_str}\n\nContent:\n{truncated_markdown}"
             
+            providers_to_try = [llm_provider]
+            for p in ["openai", "gemini", "anthropic"]:
+                if p != llm_provider:
+                    providers_to_try.append(p)
+
             result = ""
-            for attempt in range(3):
-                try:
-                    async with httpx.AsyncClient(timeout=60.0) as client:
-                        if llm_provider == "openai":
-                            target_model = llm_model or "gpt-4o-mini"
-                            headers = {
-                                "Authorization": f"Bearer {resolved_key}",
-                                "Content-Type": "application/json"
-                            }
-                            payload = {
-                                "model": target_model,
-                                "messages": [
-                                    {"role": "system", "content": system},
-                                    {"role": "user", "content": user}
-                                ],
-                                "max_tokens": 2000
-                            }
-                            if json_schema:
-                                payload["response_format"] = {
-                                    "type": "json_schema",
-                                    "json_schema": {
-                                        "name": "extracted_data",
-                                        "strict": True,
-                                        "schema": json_schema
-                                    }
-                                }
-                            else:
-                                payload["response_format"] = {"type": "json_object"}
-                                
-                            logger.info(f"Requesting OpenAI structured outputs using model: {target_model} (attempt {attempt + 1})")
-                            resp = await client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
-                            resp.raise_for_status()
-                            result = resp.json()["choices"][0]["message"]["content"]
-                        elif llm_provider == "anthropic":
-                            target_model = llm_model or "claude-3-5-haiku-20241022"
-                            headers = {
-                                "x-api-key": resolved_key,
-                                "anthropic-version": "2023-06-01",
-                                "Content-Type": "application/json"
-                            }
-                            payload = {
-                                "model": target_model,
-                                "max_tokens": 2000,
-                                "system": system,
-                                "messages": [
-                                    {"role": "user", "content": user}
-                                ]
-                            }
-                            logger.info(f"Requesting Anthropic structured outputs using model: {target_model} (attempt {attempt + 1})")
-                            resp = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
-                            resp.raise_for_status()
-                            result = resp.json()["content"][0]["text"]
-                        elif llm_provider == "gemini":
-                            target_model = llm_model or "gemini-2.5-flash"
-                            url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={resolved_key}"
-                            headers = {
-                                "Content-Type": "application/json"
-                            }
-                            payload = {
-                                "contents": [
-                                    {
-                                        "parts": [
-                                            {"text": system + "\n\n" + user}
-                                        ]
-                                    }
-                                ],
-                                "generationConfig": {
-                                    "responseMimeType": "application/json"
-                                }
-                            }
-                            if json_schema:
-                                payload["generationConfig"]["responseSchema"] = json_schema
-                                
-                            logger.info(f"Requesting Gemini structured outputs using model: {target_model} (attempt {attempt + 1})")
-                            resp = await client.post(url, headers=headers, json=payload)
-                            resp.raise_for_status()
-                            result = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+            provider_success = False
+            last_err_msg = ""
+            
+            for current_provider in providers_to_try:
+                if provider_success:
                     break
-                except Exception as llm_err:
-                    if attempt < 2:
-                        wait = 2.0 * (attempt + 1)
-                        logger.warning(f"LLM API request failed: {llm_err}. Retrying in {wait}s...")
-                        await asyncio.sleep(wait)
-                    else:
-                        logger.error(f"LLM API request ({llm_provider}) failed after 3 attempts. Last error: {llm_err}")
-                        return {
-                            "error": "llm_api_failed",
-                            "error_message": f"LLM API request ({llm_provider}) failed after 3 attempts: {llm_err!s}"
-                        }
+                    
+                current_key = llm_api_key if current_provider == llm_provider else os.getenv(f"{current_provider.upper()}_API_KEY")
+                if not current_key:
+                    continue
+                    
+                for attempt in range(2):
+                    try:
+                        async with httpx.AsyncClient(timeout=60.0) as client:
+                            if current_provider == "openai":
+                                target_model = llm_model if current_provider == llm_provider else "gpt-4o-mini"
+                                headers = {
+                                    "Authorization": f"Bearer {current_key}",
+                                    "Content-Type": "application/json"
+                                }
+                                payload = {
+                                    "model": target_model,
+                                    "messages": [
+                                        {"role": "system", "content": system},
+                                        {"role": "user", "content": user}
+                                    ],
+                                    "max_tokens": 2000
+                                }
+                                if json_schema:
+                                    payload["response_format"] = {
+                                        "type": "json_schema",
+                                        "json_schema": {
+                                            "name": "extracted_data",
+                                            "strict": True,
+                                            "schema": json_schema
+                                        }
+                                    }
+                                else:
+                                    payload["response_format"] = {"type": "json_object"}
+                                    
+                                logger.info(f"Requesting OpenAI structured outputs using model: {target_model} (attempt {attempt + 1})")
+                                resp = await client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+                                resp.raise_for_status()
+                                result = resp.json()["choices"][0]["message"]["content"]
+                            elif current_provider == "anthropic":
+                                target_model = llm_model if current_provider == llm_provider else "claude-3-5-haiku-20241022"
+                                headers = {
+                                    "x-api-key": current_key,
+                                    "anthropic-version": "2023-06-01",
+                                    "Content-Type": "application/json"
+                                }
+                                payload = {
+                                    "model": target_model,
+                                    "max_tokens": 2000,
+                                    "system": system,
+                                    "messages": [
+                                        {"role": "user", "content": user}
+                                    ]
+                                }
+                                logger.info(f"Requesting Anthropic structured outputs using model: {target_model} (attempt {attempt + 1})")
+                                resp = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+                                resp.raise_for_status()
+                                result = resp.json()["content"][0]["text"]
+                            elif current_provider == "gemini":
+                                target_model = llm_model if current_provider == llm_provider else "gemini-3.6-flash"
+                                url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={current_key}"
+                                headers = {
+                                    "Content-Type": "application/json"
+                                }
+                                payload = {
+                                    "contents": [
+                                        {
+                                            "parts": [
+                                                {"text": system + "\n\n" + user}
+                                            ]
+                                        }
+                                    ],
+                                    "generationConfig": {
+                                        "responseMimeType": "application/json"
+                                    }
+                                }
+                                if json_schema:
+                                    payload["generationConfig"]["responseSchema"] = json_schema
+                                    
+                                logger.info(f"Requesting Gemini structured outputs using model: {target_model} (attempt {attempt + 1})")
+                                resp = await client.post(url, headers=headers, json=payload)
+                                resp.raise_for_status()
+                                result = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
+                        provider_success = True
+                        break
+                    except Exception as llm_err:
+                        last_err_msg = str(llm_err)
+                        if attempt < 1:
+                            wait = 2.0 * (attempt + 1)
+                            logger.warning(f"LLM API request ({current_provider}) failed: {llm_err}. Retrying in {wait}s...")
+                            await asyncio.sleep(wait)
+                        else:
+                            logger.error(f"LLM API request ({current_provider}) failed after 2 attempts.")
+
+            if not provider_success:
+                return {
+                    "error": "llm_api_failed",
+                    "error_message": f"All available LLM providers failed. Last error: {last_err_msg}"
+                }
             
             result = result.strip()
             if result.startswith("```"):
@@ -921,8 +941,11 @@ async def run_fetch(
                         try:
                             raw_html = await page.content()
                         except Exception as content_err:
-                            logger.warning(f"Failed to get page content: {content_err}. Waiting 2s and retrying...")
-                            await page.wait_for_timeout(2000)
+                            logger.warning(f"Failed to get page content: {content_err}. Waiting for networkidle and retrying...")
+                            try:
+                                await page.wait_for_load_state("networkidle", timeout=2000)
+                            except Exception:
+                                pass
                             try:
                                 raw_html = await page.content()
                             except Exception as content_err_retry:

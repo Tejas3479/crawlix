@@ -53,7 +53,7 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 - **HIGH** — Crawl section shared `#extraction-prompt-textarea` with the request builder. Now uses dedicated `#crawl-extraction-prompt`.
 - **MEDIUM** — Dead code: `parseHeaders()` and `parseCookies()` (128 lines) removed. Superseded by `parseKvContainer()`.
 - **MEDIUM** — Duplicate `import os as _os` in `app.py`. Removed.
-- **MEDIUM** — Wrong LLM placeholder model `gemini-3.1` (non-existent). Fixed to `gemini-2.5-flash`.
+- **MEDIUM** — Wrong LLM placeholder model `gemini-3.1` (non-existent). Fixed to `gemini-3.6-flash`.
 - **MEDIUM** — `outline: none` on all elements broke keyboard focus visibility. Replaced with `*:focus-visible` accessible outline.
 - **LOW** — Proxy regex `r'[,\n\r]+'` → `r'[,\r\n]+'` to correctly handle Windows CRLF in textareas.
 

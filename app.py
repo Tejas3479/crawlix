@@ -233,7 +233,7 @@ async def resource_limits_middleware(request: Request, call_next):
 ALLOWED_LLM_MODELS = {
     "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini",
     "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229",
-    "gemini-1.5-pro", "gemini-1.5-flash", "gemini-2.0-flash", "gemini-2.0-flash-lite"
+    "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro"
 }
 
 # PYDANTIC SCHEMAS
