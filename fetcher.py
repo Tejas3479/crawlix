@@ -5,7 +5,6 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import base64
-import datetime
 import ipaddress
 import json
 import logging
@@ -14,19 +13,24 @@ import random
 import re
 import socket
 import time
-import redis.asyncio as redis
-import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime as dt_class
-from datetime import time
-import redis.asyncio as rediszone
+from datetime import timezone
 from urllib.parse import urljoin, urlparse
 
 import httpx
+import redis.asyncio as redis
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession as CurlSession
+
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+
 from markdownify import markdownify
 from playwright.async_api import Browser, async_playwright
+from sqlalchemy import desc, select
+
+from database import CrawlJob, ProxyManager, async_session_maker
 
 # RESTRICTED IP NETWORKS & HOSTNAMES FOR ENHANCED SSRF PROTECTION
 RESTRICTED_NETWORKS = [
@@ -740,8 +744,7 @@ async def run_fetch(
     Returns dict with keys:
       final_url, status_code, raw_html, content, retries_used, error, error_message, screenshot, timing
     """
-    import time
-import redis.asyncio as redis as _time
+    import time as _time
     _t0 = _time.monotonic()
     # 1. SSRF Safety Check (async-safe DNS resolution)
     if not await is_ssrf_safe(url):
@@ -1058,101 +1061,90 @@ def extract_links(html: str, base_url: str) -> list[str]:
 
 class CrawlManager:
     def __init__(self):
-        self.crawls: dict[str, dict] = {}
         self.tasks: dict[str, asyncio.Task] = {}
-        self._lock = asyncio.Lock()
-        self._load_from_disk()
-
-    def _save_to_disk(self):
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            serializable = list(self.crawls.values())
-            tmp_file = CRAWLS_FILE + ".tmp"
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(serializable, f, indent=2)
-            os.replace(tmp_file, CRAWLS_FILE)
-        except Exception as e:
-            logger.error(f"Failed to persist crawls to disk: {e}")
-
-    def _load_from_disk(self):
-        if not os.path.exists(CRAWLS_FILE):
-            return
-        try:
-            with open(CRAWLS_FILE, "r", encoding="utf-8") as f:
-                crawls_list = json.load(f)
-            loaded_count = 0
-            for c in crawls_list:
-                cid = c.get("crawl_id")
-                if not cid:
-                    continue
-                # If a crawl was running when server stopped, mark as interrupted
-                if c.get("status") == "running":
-                    c["status"] = "interrupted"
-                    c["error_message"] = "Crawl was interrupted by a server restart"
-                self.crawls[cid] = c
-                loaded_count += 1
-            if loaded_count > 0:
-                logger.info(f"Loaded {loaded_count} crawl jobs from disk persistence.")
-        except Exception as e:
-            logger.error(f"Failed to load crawls from disk: {e}")
 
     async def create_crawl(self, url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False) -> str:
-        crawl_id = str(uuid.uuid4())
-        self.crawls[crawl_id] = {
-            "crawl_id": crawl_id,
-            "url": url,
-            "status": "running",
-            "pages_crawled": 0,
-            "max_pages": max_pages,
-            "crawled_urls": [],
-            "results": [],
-            "created_at": datetime.datetime.now(timezone.utc).isoformat()
-        }
-        self._save_to_disk()
-        # Launch task and track it
+        async with async_session_maker() as session:
+            job = CrawlJob(
+                url=url,
+                max_pages=max_pages,
+                max_depth=max_depth,
+                render_js=render_js,
+                output_format=output_format,
+                status="running"
+            )
+            session.add(job)
+            await session.commit()
+            await session.refresh(job)
+            crawl_id = job.id
+            
         task = asyncio.create_task(self._run_crawl(crawl_id, url, max_pages, max_depth, render_js, output_format, strip_links, css_selector, limit_domain, actions, extraction_prompt, stealth))
         self.tasks[crawl_id] = task
         return crawl_id
 
-    def get_crawl(self, crawl_id: str) -> dict | None:
-        return self.crawls.get(crawl_id)
+    async def get_crawl(self, crawl_id: str) -> dict | None:
+        async with async_session_maker() as session:
+            job = await session.get(CrawlJob, crawl_id)
+            if job:
+                return job.model_dump()
+            return None
 
-    def list_crawls(self) -> list[dict]:
-        # Copy values to a list to prevent dictionary changed size during iteration
-        crawls_copy = list(self.crawls.values())
-        return sorted(
-            [
+    async def list_crawls(self) -> list[dict]:
+        async with async_session_maker() as session:
+            result = await session.execute(select(CrawlJob).order_by(desc(CrawlJob.created_at)))
+            jobs = result.scalars().all()
+            return [
                 {
-                    "crawl_id": c["crawl_id"],
-                    "url": c["url"],
-                    "status": c["status"],
-                    "pages_crawled": c["pages_crawled"],
-                    "max_pages": c["max_pages"],
-                    "created_at": c["created_at"],
-                    "url_count": len(c.get("crawled_urls", []))
+                    "crawl_id": j.id,
+                    "url": j.url,
+                    "status": j.status,
+                    "pages_crawled": j.stats.get("pages_crawled", 0),
+                    "max_pages": j.max_pages,
+                    "created_at": j.created_at.isoformat(),
+                    "url_count": len(j.results) if isinstance(j.results, list) else 0
                 }
-                for c in crawls_copy
-            ],
-            key=lambda x: x["created_at"],
-            reverse=True
-        )
+                for j in jobs
+            ]
 
-    def delete_crawl(self, crawl_id: str) -> bool:
-        if crawl_id in self.crawls:
-            del self.crawls[crawl_id]
-            # Cancel background task if active
-            task = self.tasks.pop(crawl_id, None)
-            if task and not task.done():
-                task.cancel()
-            self._save_to_disk()
-            return True
-        return False
+    async def delete_crawl(self, crawl_id: str) -> bool:
+        async with async_session_maker() as session:
+            job = await session.get(CrawlJob, crawl_id)
+            if job:
+                await session.delete(job)
+                await session.commit()
+                task = self.tasks.pop(crawl_id, None)
+                if task and not task.done():
+                    task.cancel()
+                return True
+            return False
+
+    async def _update_job_state(self, crawl_id: str, results: list, crawled_count: int, status: str | None = None, error_message: str | None = None):
+        async with async_session_maker() as session:
+            job = await session.get(CrawlJob, crawl_id)
+            if not job:
+                return
+            
+            # Create new lists/dicts to ensure SQLAlchemy detects changes to JSON columns
+            new_results = list(job.results) if job.results else []
+            new_results.extend(results)
+            job.results = new_results
+            
+            new_stats = dict(job.stats) if job.stats else {}
+            new_stats["pages_crawled"] = crawled_count
+            job.stats = new_stats
+            
+            if status:
+                job.status = status
+            if error_message:
+                job.error_message = error_message
+                
+            session.add(job)
+            await session.commit()
 
     async def _run_crawl(self, crawl_id: str, seed_url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False):
         queue = [(seed_url, 0)] # (url, depth)
         visited = set()
         crawled_count = 0
-        results = []
         base_domain = urlparse(seed_url).netloc
 
         CONCURRENCY = 3
@@ -1162,8 +1154,9 @@ class CrawlManager:
 
         async def crawl_worker(url, depth):
             nonlocal crawled_count
+            proxy_url = await ProxyManager.get_proxy()
             try:
-                logger.info(f"Crawl {crawl_id}: scraping {url} (depth: {depth})")
+                logger.info(f"Crawl {crawl_id}: scraping {url} (depth: {depth}) using proxy {proxy_url}")
                 res = await run_fetch(
                     url=url,
                     method="GET",
@@ -1174,7 +1167,7 @@ class CrawlManager:
                     session=None,
                     render_js=render_js,
                     scroll=True,
-                    proxy_url=None,
+                    proxy_url=proxy_url,
                     max_retries=1,
                     timeout=20,
                     impersonate="chrome120",
@@ -1191,10 +1184,15 @@ class CrawlManager:
                 )
 
                 async with lock:
-                    if crawl_id not in self.crawls:
-                        return
+                    async with async_session_maker() as session:
+                        job = await session.get(CrawlJob, crawl_id)
+                        if not job:
+                            return
 
+                    new_result = None
                     if res.get("error") is None:
+                        if proxy_url:
+                            await ProxyManager.report_success(proxy_url)
                         crawled_count += 1
                         html = res.get("raw_html", "")
                         content = res.get("content", "")
@@ -1207,16 +1205,12 @@ class CrawlManager:
                             except Exception:
                                 pass
 
-                        results.append({
+                        new_result = {
                             "url": url,
                             "status_code": res.get("status_code"),
                             "title": title,
                             "content": content
-                        })
-
-                        self.crawls[crawl_id]["crawled_urls"].append(url)
-                        self.crawls[crawl_id]["pages_crawled"] = crawled_count
-                        self.crawls[crawl_id]["results"] = results
+                        }
 
                         # Extract links if not at max depth and crawled_count < max_pages
                         if depth < max_depth:
@@ -1227,24 +1221,33 @@ class CrawlManager:
                                 if link not in visited and not any(q[0] == link for q in queue):
                                     queue.append((link, depth + 1))
                     else:
-                        results.append({
+                        if proxy_url:
+                            await ProxyManager.report_failure(proxy_url)
+                        new_result = {
                             "url": url,
                             "status_code": res.get("status_code", 0),
                             "error": res.get("error"),
                             "error_message": res.get("error_message")
-                        })
-                        self.crawls[crawl_id]["results"] = results
-                        self._save_to_disk()
+                        }
+                    
+                    if new_result:
+                        await self._update_job_state(crawl_id, [new_result], crawled_count)
+                        
             except Exception as e:
                 logger.error(f"Failed to crawl {url}: {e}")
+                if proxy_url:
+                    await ProxyManager.report_failure(proxy_url)
             finally:
                 semaphore.release()
 
+        
         try:
             while (queue or active_tasks) and crawled_count < max_pages:
-                if crawl_id not in self.crawls:
-                    logger.info(f"Crawl {crawl_id} was deleted/cancelled. Exiting loop.")
-                    break
+                async with async_session_maker() as session:
+                    job = await session.get(CrawlJob, crawl_id)
+                    if not job:
+                        logger.info(f"Crawl {crawl_id} was deleted/cancelled. Exiting loop.")
+                        break
 
                 finished = {t for t in active_tasks if t.done()}
                 active_tasks -= finished
@@ -1271,6 +1274,8 @@ class CrawlManager:
 
             if active_tasks:
                 await asyncio.gather(*active_tasks, return_exceptions=True)
+                
+            await self._update_job_state(crawl_id, [], crawled_count, status="completed")
 
         except asyncio.CancelledError:
             logger.info(f"Crawl {crawl_id} task was explicitly cancelled.")
@@ -1278,11 +1283,14 @@ class CrawlManager:
                 t.cancel()
             if active_tasks:
                 await asyncio.gather(*active_tasks, return_exceptions=True)
+            await self._update_job_state(crawl_id, [], crawled_count, status="interrupted", error_message="Crawl explicitly cancelled.")
+        except Exception as e:
+            logger.error(f"Crawl {crawl_id} failed with error: {e}")
+            await self._update_job_state(crawl_id, [], crawled_count, status="failed", error_message=str(e))
         finally:
-            self.tasks.pop(crawl_id, None)
-            if crawl_id in self.crawls:
-                self.crawls[crawl_id]["status"] = "completed" if crawled_count > 0 else "failed"
-                self._save_to_disk()
+            if crawl_id in self.tasks:
+                del self.tasks[crawl_id]
+
 
 
 # SINGLETONS

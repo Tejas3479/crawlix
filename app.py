@@ -8,11 +8,11 @@ if sys.platform == "win32":
 import json
 import logging
 import time
-import redis.asyncio as redis
 from contextlib import asynccontextmanager
 from typing import Literal
 from urllib.parse import urlparse
 
+import redis.asyncio as redis
 from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -20,6 +20,7 @@ from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBea
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
+from database import init_db
 from fetcher import (
     SensitiveDataFilter,
     crawl_manager,
@@ -122,6 +123,7 @@ async def lifespan(app: FastAPI):
     global _cleanup_task, _rate_limit_task
     # STARTUP
     try:
+        await init_db()
         await playwright_mgr.initialize()
     except Exception as e:
         logger.warning(f"Playwright pre-initialization skipped on startup ({e}). Will initialize lazily when JS rendering is requested.")
@@ -451,18 +453,18 @@ async def start_crawl(req: CrawlRequest):
 
 @app.get("/api/crawl/{crawl_id}", dependencies=[Depends(verify_api_key)])
 async def get_crawl(crawl_id: str):
-    crawl = crawl_manager.get_crawl(crawl_id)
+    crawl = await crawl_manager.get_crawl(crawl_id)
     if not crawl:
         raise HTTPException(status_code=404, detail="Crawl not found")
     return crawl
 
 @app.get("/api/crawl", dependencies=[Depends(verify_api_key)])
 async def list_crawls():
-    return crawl_manager.list_crawls()
+    return await crawl_manager.list_crawls()
 
 @app.delete("/api/crawl/{crawl_id}", dependencies=[Depends(verify_api_key)])
 async def delete_crawl(crawl_id: str):
-    if not crawl_manager.delete_crawl(crawl_id):
+    if not await crawl_manager.delete_crawl(crawl_id):
         raise HTTPException(status_code=404, detail="Crawl not found")
     return {"deleted": True, "crawl_id": crawl_id}
 
@@ -475,3 +477,36 @@ if __name__ == "__main__":
     uvicorn.run("app:app", host="0.0.0.0", port=8000, reload=False)
 
 
+
+
+
+from pydantic import BaseModel
+from sqlalchemy import select
+
+from database import Proxy, async_session_maker
+
+
+class ProxyCreate(BaseModel):
+    url: str
+
+@app.post("/api/proxies", dependencies=[Depends(verify_api_key)])
+async def add_proxy(proxy: ProxyCreate):
+    async with async_session_maker() as session:
+        # Check if exists
+        result = await session.execute(select(Proxy).where(Proxy.url == proxy.url))
+        existing = result.scalars().first()
+        if existing:
+            return {"status": "already_exists", "id": existing.id}
+        
+        new_proxy = Proxy(url=proxy.url)
+        session.add(new_proxy)
+        await session.commit()
+        await session.refresh(new_proxy)
+        return {"status": "added", "id": new_proxy.id}
+
+@app.get("/api/proxies", dependencies=[Depends(verify_api_key)])
+async def list_proxies():
+    async with async_session_maker() as session:
+        result = await session.execute(select(Proxy))
+        proxies = result.scalars().all()
+        return [{"id": p.id, "url": p.url, "is_active": p.is_active, "fail_count": p.fail_count} for p in proxies]
