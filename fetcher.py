@@ -1,31 +1,29 @@
-import sys
 import asyncio
+import sys
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import base64
 import datetime
-from datetime import datetime as dt_class, timezone
-
+import ipaddress
 import json
+import logging
 import os
 import random
 import re
-import logging
 import socket
-import ipaddress
 import uuid
 from contextlib import asynccontextmanager
-from typing import Any
+from datetime import datetime as dt_class
+from datetime import timezone
 from urllib.parse import urljoin, urlparse
 
-from curl_cffi.requests import AsyncSession as CurlSession
-from playwright.async_api import async_playwright, BrowserContext, Browser
-from bs4 import BeautifulSoup
-from markdownify import markdownify
 import httpx
-
+from bs4 import BeautifulSoup
+from curl_cffi.requests import AsyncSession as CurlSession
+from markdownify import markdownify
+from playwright.async_api import Browser, async_playwright
 
 # RESTRICTED IP NETWORKS & HOSTNAMES FOR ENHANCED SSRF PROTECTION
 RESTRICTED_NETWORKS = [
@@ -753,7 +751,7 @@ async def process_content(
                         logger.error(f"LLM API request ({llm_provider}) failed after 3 attempts. Last error: {llm_err}")
                         return {
                             "error": "llm_api_failed",
-                            "error_message": f"LLM API request ({llm_provider}) failed after 3 attempts: {str(llm_err)}"
+                            "error_message": f"LLM API request ({llm_provider}) failed after 3 attempts: {llm_err!s}"
                         }
             
             result = result.strip()

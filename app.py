@@ -1,28 +1,31 @@
-import sys
 import asyncio
 import os
+import sys
 
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
-import time
-import uuid
-import logging
-from contextlib import asynccontextmanager
-from datetime import datetime
-from typing import Literal, Optional
-
 import json
+import logging
+import time
+from contextlib import asynccontextmanager
+from typing import Literal
 from urllib.parse import urlparse
 
-from fastapi import FastAPI, Depends, HTTPException, Header, Request
-from fastapi.security import APIKeyHeader, HTTPBearer, HTTPAuthorizationCredentials
+from fastapi import Depends, FastAPI, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
+from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
-from pydantic import BaseModel, HttpUrl, Field, field_validator
+from pydantic import BaseModel, Field, HttpUrl, field_validator
 
-from fetcher import playwright_mgr, session_manager, run_fetch, crawl_manager, SensitiveDataFilter
+from fetcher import (
+    SensitiveDataFilter,
+    crawl_manager,
+    playwright_mgr,
+    run_fetch,
+    session_manager,
+)
 
 # Set up logging configuration with SensitiveDataFilter
 logger = logging.getLogger("crawlix.app")
@@ -44,8 +47,8 @@ security_header = APIKeyHeader(name="x-api-key", auto_error=False)
 security_bearer = HTTPBearer(auto_error=False)
 
 async def verify_api_key(
-    x_api_key: Optional[str] = Depends(security_header),
-    bearer: Optional[HTTPAuthorizationCredentials] = Depends(security_bearer)
+    x_api_key: str | None = Depends(security_header),
+    bearer: HTTPAuthorizationCredentials | None = Depends(security_bearer)
 ):
     if not VALID_KEYS:
         return
@@ -216,7 +219,7 @@ ALLOWED_LLM_MODELS = {
 # PYDANTIC SCHEMAS
 class ProxyConfig(BaseModel):
     url: str = Field(..., max_length=2000, description="Full proxy URL e.g. http://user:pass@host:port")
-    country_code: Optional[str] = Field(None, max_length=10)
+    country_code: str | None = Field(None, max_length=10)
 
     @field_validator("url")
     @classmethod
@@ -232,9 +235,9 @@ class ProxyConfig(BaseModel):
 
 class ActionConfig(BaseModel):
     type: Literal["click", "wait", "scroll", "fill", "hover", "press"]
-    selector: Optional[str] = Field(None, max_length=500)
-    value: Optional[str] = Field(None, max_length=2000)
-    duration: Optional[int] = Field(None, ge=0, le=60)
+    selector: str | None = Field(None, max_length=500)
+    value: str | None = Field(None, max_length=2000)
+    duration: int | None = Field(None, ge=0, le=60)
 
 
 class FetchRequest(BaseModel):
@@ -242,28 +245,28 @@ class FetchRequest(BaseModel):
     method: str = Field("GET", max_length=10)
     headers: dict[str, str] = Field(default_factory=dict)
     cookies: dict[str, str] = Field(default_factory=dict)
-    body: Optional[str] = Field(None, max_length=10_000_000) # 10MB max body
-    json_body: Optional[dict] = None
-    session_id: Optional[str] = Field(None, max_length=100)
+    body: str | None = Field(None, max_length=10_000_000) # 10MB max body
+    json_body: dict | None = None
+    session_id: str | None = Field(None, max_length=100)
     render_js: bool = False
     scroll: bool = False
     output_format: Literal["html", "markdown", "structured"] = "html"
     strip_links: bool = False
-    proxy: Optional[ProxyConfig] = None
+    proxy: ProxyConfig | None = None
     max_retries: int = Field(2, ge=0, le=5)
     timeout: int = Field(30, ge=1, le=120)
     impersonate: str = Field("chrome120", max_length=50)
-    llm_api_key: Optional[str] = Field(None, max_length=500)
+    llm_api_key: str | None = Field(None, max_length=500)
     llm_provider: Literal["openai", "anthropic", "gemini"] = "openai"
-    json_schema: Optional[dict] = None
-    wait_for_selector: Optional[str] = Field(None, max_length=500)
+    json_schema: dict | None = None
+    wait_for_selector: str | None = Field(None, max_length=500)
     wait_timeout: int = Field(30, ge=1, le=120)
-    css_selector: Optional[str] = Field(None, max_length=500)
-    llm_model: Optional[str] = Field(None, max_length=100)
-    actions: Optional[list[ActionConfig]] = Field(None, max_length=20)
+    css_selector: str | None = Field(None, max_length=500)
+    llm_model: str | None = Field(None, max_length=100)
+    actions: list[ActionConfig] | None = Field(None, max_length=20)
     screenshot: bool = False
     screenshot_format: Literal["png", "jpeg"] = "png"
-    extraction_prompt: Optional[str] = Field(None, max_length=5000)
+    extraction_prompt: str | None = Field(None, max_length=5000)
     wait_until: Literal["domcontentloaded", "load", "networkidle"] = "networkidle"
     stealth: bool = False
 
@@ -277,7 +280,7 @@ class FetchRequest(BaseModel):
 
     @field_validator("llm_model")
     @classmethod
-    def validate_llm_model(cls, v: Optional[str]) -> Optional[str]:
+    def validate_llm_model(cls, v: str | None) -> str | None:
         if v is None:
             return None
         v_clean = v.strip()
@@ -289,7 +292,7 @@ class FetchRequest(BaseModel):
 
     @field_validator("json_schema")
     @classmethod
-    def validate_json_schema_size(cls, v: Optional[dict]) -> Optional[dict]:
+    def validate_json_schema_size(cls, v: dict | None) -> dict | None:
         if v is None:
             return None
         serialized = json.dumps(v)
@@ -304,13 +307,13 @@ class FetchResponse(BaseModel):
     status_code: int
     output_format: str
     content: str | dict
-    session_id: Optional[str]
+    session_id: str | None
     latency_ms: int
     retries_used: int
-    error: Optional[str] = None
-    error_message: Optional[str] = None
-    screenshot: Optional[str] = None
-    timing: Optional[dict] = None
+    error: str | None = None
+    error_message: str | None = None
+    screenshot: str | None = None
+    timing: dict | None = None
 
 
 class CrawlRequest(BaseModel):
@@ -320,10 +323,10 @@ class CrawlRequest(BaseModel):
     render_js: bool = False
     output_format: Literal["html", "markdown", "structured"] = "markdown"
     strip_links: bool = False
-    css_selector: Optional[str] = Field(None, max_length=500)
+    css_selector: str | None = Field(None, max_length=500)
     limit_domain: bool = True
-    actions: Optional[list[ActionConfig]] = Field(None, max_length=20)
-    extraction_prompt: Optional[str] = Field(None, max_length=5000)
+    actions: list[ActionConfig] | None = Field(None, max_length=20)
+    extraction_prompt: str | None = Field(None, max_length=5000)
     stealth: bool = False
 
     @field_validator("url")
