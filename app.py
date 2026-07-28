@@ -549,6 +549,71 @@ async def download_batch_results(batch_id: str):
             raise HTTPException(status_code=400, detail="Batch job is not completed or export file is missing")
         return FileResponse(batch.export_path, filename=f"batch_{batch_id}.json", media_type="application/json")
 
+from database import Destination, ScheduledCrawl
+
+class DestinationCreate(BaseModel):
+    name: str
+    type: Literal["pinecone", "weaviate", "supabase"]
+    config: dict
+
+@app.post("/api/destinations", dependencies=[Depends(verify_api_key)])
+async def create_destination(dest: DestinationCreate):
+    async with async_session_maker() as session:
+        new_dest = Destination(name=dest.name, type=dest.type, config=dest.config)
+        session.add(new_dest)
+        await session.commit()
+        await session.refresh(new_dest)
+        return new_dest.model_dump()
+
+@app.get("/api/destinations", dependencies=[Depends(verify_api_key)])
+async def list_destinations():
+    async with async_session_maker() as session:
+        result = await session.execute(select(Destination))
+        return [d.model_dump() for d in result.scalars().all()]
+
+@app.delete("/api/destinations/{dest_id}", dependencies=[Depends(verify_api_key)])
+async def delete_destination(dest_id: str):
+    async with async_session_maker() as session:
+        dest = await session.get(Destination, dest_id)
+        if not dest:
+            raise HTTPException(status_code=404, detail="Destination not found")
+        await session.delete(dest)
+        await session.commit()
+        return {"deleted": True, "id": dest_id}
+
+class ScheduleCreate(BaseModel):
+    cron_expression: str
+    payload: dict
+
+@app.post("/api/schedule", dependencies=[Depends(verify_api_key)])
+async def create_schedule(sched: ScheduleCreate):
+    from croniter import croniter
+    if not croniter.is_valid(sched.cron_expression):
+        raise HTTPException(status_code=400, detail="Invalid cron expression")
+        
+    async with async_session_maker() as session:
+        new_sched = ScheduledCrawl(cron_expression=sched.cron_expression, payload=sched.payload)
+        session.add(new_sched)
+        await session.commit()
+        await session.refresh(new_sched)
+        return new_sched.model_dump()
+
+@app.get("/api/schedule", dependencies=[Depends(verify_api_key)])
+async def list_schedules():
+    async with async_session_maker() as session:
+        result = await session.execute(select(ScheduledCrawl))
+        return [s.model_dump() for s in result.scalars().all()]
+
+@app.delete("/api/schedule/{sched_id}", dependencies=[Depends(verify_api_key)])
+async def delete_schedule(sched_id: str):
+    async with async_session_maker() as session:
+        sched = await session.get(ScheduledCrawl, sched_id)
+        if not sched:
+            raise HTTPException(status_code=404, detail="Schedule not found")
+        await session.delete(sched)
+        await session.commit()
+        return {"deleted": True, "id": sched_id}
+
 # Mount static files
 if os.path.isdir("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")

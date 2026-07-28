@@ -2,7 +2,7 @@ import { state, API_BASE, TABS, MAX_HISTORY, saveBuilderState, loadBuilderState 
 import { showToast, timeAgo, escapeHtml, updateMetaBar, initFramerMotion } from './ui.js';
 import { checkHealth, fetchSessions, deleteSessionAPI, performFetchAPI, saveToHistory, downloadSessionsCsv, downloadSessionsJson } from './api.js';
 import { setupJsRenderingToggle, setupOutputFormatToggle, setupActionBuilder, parseActions, setupEnvPanel, createKvRow, parseKvContainer, generatePythonSnippet, isValidHttpUrl, validateJsonSchema, validateRequestBody, restoreBuilderStateUI } from './editor.js';
-import { renderCrawls, startCrawlJob, setupCrawlPolling, setupCrawlDownload, setupCrawlCsvDownload } from './crawler.js';
+import { renderCrawls, startCrawlJob, setupCrawlPolling, setupCrawlDownload, setupCrawlCsvDownload, setupCrawlScheduling } from './crawler.js';
 
 window.addEventListener("unhandledrejection", (event) => {
   console.error("[Crawlix Error Boundary] Unhandled Promise Rejection:", event.reason);
@@ -39,7 +39,7 @@ export function renderTab(tabName) {
 
     if (data.output_format === "html" && typeof data.content === "string") {
       let injectedHtml = data.content;
-      const selectorHelperScript = \`
+      const selectorHelperScript = `
         <style>
           .crawlix-highlight {
             outline: 2px dashed #7c6cf0 !important;
@@ -90,16 +90,16 @@ export function renderTab(tabName) {
             });
           });
         </script>
-      \`;
+      `;
       injectedHtml = injectedHtml.replace("</body>", selectorHelperScript + "</body>");
       if (!injectedHtml.includes(selectorHelperScript)) {
         injectedHtml += selectorHelperScript;
       }
       iframe.srcdoc = injectedHtml;
     } else if (data.output_format === "markdown" && typeof data.content === "string") {
-      iframe.srcdoc = \`<body style='font-family:Inter,sans-serif;padding:16px;color:\${textColor};background-color:\${bgColor}'>\${marked.parse(data.content)}</body>\`;
+      iframe.srcdoc = `<body style='font-family:Inter,sans-serif;padding:16px;color:${textColor};background-color:${bgColor}'>${marked.parse(data.content)}</body>`;
     } else {
-      iframe.srcdoc = \`<body style='font-family:Inter,sans-serif;padding:16px;color:\${textColor};background-color:\${bgColor}'><pre>\${JSON.stringify(data.content, null, 2).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre></body>\`;
+      iframe.srcdoc = `<body style='font-family:Inter,sans-serif;padding:16px;color:${textColor};background-color:${bgColor}'><pre>${JSON.stringify(data.content, null, 2).replace(/</g, "&lt;").replace(/>/g, "&gt;")}</pre></body>`;
     }
   } else if (tabName === "screenshot") {
     const img = document.getElementById("screenshot-img");
@@ -161,19 +161,19 @@ export async function renderSessions() {
       return;
     }
     
-    grid.innerHTML = sessions.map(s => \`
-      <div class="session-card" data-session-id="\${s.session_id}">
-        <div class="card-session-id">\${s.session_id}</div>
-        <span class="engine-badge engine-\${s.engine}">\${s.engine}</span>
+    grid.innerHTML = sessions.map(s => `
+      <div class="session-card" data-session-id="${s.session_id}">
+        <div class="card-session-id">${s.session_id}</div>
+        <span class="engine-badge engine-${s.engine}">${s.engine}</span>
         <div class="card-meta">
-          <div>Requests: \${s.request_count}</div>
-          <div>Cookies: \${s.cookie_count}</div>
-          <div>Created: \${timeAgo(s.created_at)}</div>
-          <div>Last active: \${timeAgo(s.last_active)}</div>
+          <div>Requests: ${s.request_count}</div>
+          <div>Cookies: ${s.cookie_count}</div>
+          <div>Created: ${timeAgo(s.created_at)}</div>
+          <div>Last active: ${timeAgo(s.last_active)}</div>
         </div>
-        <button class="delete-session-btn" data-session-id="\${s.session_id}" title="Delete session">✕</button>
+        <button class="delete-session-btn" data-session-id="${s.session_id}" title="Delete session">✕</button>
       </div>
-    \`).join("");
+    `).join("");
     
     grid.querySelectorAll(".delete-session-btn").forEach(btn => {
       btn.addEventListener("click", async (e) => {
@@ -212,16 +212,16 @@ export function renderHistory() {
     return;
   }
   
-  list.innerHTML = history.map(h => \`
-    <div class="history-item" data-id="\${h.id}" role="button" tabindex="0" aria-label="Replay \${h.method} \${h.url}">
-      <span class="history-method">\${escapeHtml(h.method)}</span>
-      <span class="history-url" title="\${escapeHtml(h.url)}">\${escapeHtml(h.url)}</span>
+  list.innerHTML = history.map(h => `
+    <div class="history-item" data-id="${h.id}" role="button" tabindex="0" aria-label="Replay ${h.method} ${h.url}">
+      <span class="history-method">${escapeHtml(h.method)}</span>
+      <span class="history-url" title="${escapeHtml(h.url)}">${escapeHtml(h.url)}</span>
       <span class="history-meta">
-        <span class="status-pill \${h.status_code >= 200 && h.status_code < 300 ? 'status-2xx' : 'status-4xx'}" style="font-size:10px;padding:2px 6px;">\${h.status_code}</span>
-        &nbsp;\${h.latency_ms}ms &nbsp;\${timeAgo(h.timestamp)}
+        <span class="status-pill ${h.status_code >= 200 && h.status_code < 300 ? 'status-2xx' : 'status-4xx'}" style="font-size:10px;padding:2px 6px;">${h.status_code}</span>
+        &nbsp;${h.latency_ms}ms &nbsp;${timeAgo(h.timestamp)}
       </span>
     </div>
-  \`).join("");
+  `).join("");
 
   list.querySelectorAll(".history-item").forEach(item => {
     const handler = () => {
@@ -242,7 +242,7 @@ export function renderHistory() {
       
       updateMetaBar(h.response);
       renderTabPatched(state.activeTab);
-      showToast(\`Loaded: \${h.method} \${h.url.substring(0, 40)}…\`, "info", 2000);
+      showToast(`Loaded: ${h.method} ${h.url.substring(0, 40)}…`, "info", 2000);
     };
     item.addEventListener("click", handler);
     item.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") handler(); });
@@ -341,6 +341,7 @@ document.addEventListener("DOMContentLoaded", () => {
   setupActionBuilder();
   setupCrawlDownload();
   setupCrawlCsvDownload();
+  setupCrawlScheduling();
   attachSessionExportListeners();
   setupJsRenderingToggle();
   setupOutputFormatToggle();
@@ -378,17 +379,115 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("message", (e) => {
     if (e.data && e.data.type === "crawlix-selector-select") {
       const selector = e.data.selector;
-      const tuningToggle = document.querySelector("#tuning-collapsible .collapsible-toggle");
-      if (tuningToggle && tuningToggle.getAttribute("aria-expanded") !== "true") {
-        tuningToggle.click();
-      }
-      const cssInput = document.getElementById("css-selector-input");
-      if (cssInput) {
-        cssInput.value = selector;
-        showToast("Auto-filled Target CSS Selector: " + selector, "success", 2500);
+      const fieldName = prompt("Auto-generate schema field from this element?\\n\\nEnter a field name (e.g., 'title', 'price', 'author'):");
+      
+      if (fieldName) {
+        // Build or append to JSON Schema
+        const schemaInput = document.getElementById("json-schema-textarea");
+        let schemaObj = { type: "object", properties: {}, required: [] };
+        
+        try {
+          if (schemaInput.value.trim()) {
+            schemaObj = JSON.parse(schemaInput.value);
+            if (schemaObj.type !== "object") schemaObj = { type: "object", properties: {}, required: [] };
+            if (!schemaObj.properties) schemaObj.properties = {};
+            if (!schemaObj.required) schemaObj.required = [];
+          }
+        } catch(err) {
+          // invalid json, start fresh
+        }
+        
+        // Use the selector as a description to guide the LLM
+        schemaObj.properties[fieldName] = { type: "string", description: `Extracted from CSS selector: ${selector}` };
+        if (!schemaObj.required.includes(fieldName)) schemaObj.required.push(fieldName);
+        
+        schemaInput.value = JSON.stringify(schemaObj, null, 2);
+        
+        const schemaToggle = document.querySelector("#json-schema-collapsible .collapsible-toggle");
+        if (schemaToggle && schemaToggle.getAttribute("aria-expanded") !== "true") {
+          schemaToggle.click();
+        }
+        
+        showToast(`Added field '${fieldName}' to JSON schema`, "success", 2500);
+      } else {
+        // Fallback to updating the target CSS selector input
+        const tuningToggle = document.querySelector("#tuning-collapsible .collapsible-toggle");
+        if (tuningToggle && tuningToggle.getAttribute("aria-expanded") !== "true") {
+          tuningToggle.click();
+        }
+        const cssInput = document.getElementById("css-selector-input");
+        if (cssInput) {
+          cssInput.value = selector;
+          showToast("Auto-filled Target CSS Selector: " + selector, "success", 2500);
+        }
       }
     }
   });
+
+  const templateSelect = document.getElementById("template-select");
+  if (templateSelect) {
+    templateSelect.addEventListener("change", (e) => {
+      const val = e.target.value;
+      if (!val) return;
+      
+      const urlInput = document.getElementById("url-input");
+      const extractInput = document.getElementById("extraction-prompt-textarea");
+      const schemaInput = document.getElementById("json-schema-textarea");
+      const outFormatSelect = document.getElementById("output-format-select");
+      
+      if (val === "amazon") {
+        if (urlInput) urlInput.value = "https://www.amazon.com/dp/B08J5F3G18";
+        if (extractInput) extractInput.value = "Extract the product name, price, rating out of 5, and total number of reviews.";
+        if (schemaInput) schemaInput.value = JSON.stringify({
+          type: "object",
+          properties: {
+            product_name: { type: "string" },
+            price: { type: "number" },
+            rating: { type: "number" },
+            reviews_count: { type: "integer" }
+          },
+          required: ["product_name", "price"]
+        }, null, 2);
+        if (outFormatSelect) outFormatSelect.value = "structured";
+      } else if (val === "linkedin") {
+        if (urlInput) urlInput.value = "https://www.linkedin.com/in/williamhgates";
+        if (extractInput) extractInput.value = "Extract the person's name, current job title, company, and a list of their past 3 roles.";
+        if (schemaInput) schemaInput.value = JSON.stringify({
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            title: { type: "string" },
+            company: { type: "string" },
+            past_roles: { type: "array", items: { type: "string" } }
+          },
+          required: ["name"]
+        }, null, 2);
+        if (outFormatSelect) outFormatSelect.value = "structured";
+      } else if (val === "news") {
+        if (urlInput) urlInput.value = "https://news.ycombinator.com/";
+        if (extractInput) extractInput.value = "Extract the top 5 frontpage articles with their titles and URLs.";
+        if (schemaInput) schemaInput.value = JSON.stringify({
+          type: "object",
+          properties: {
+            articles: {
+              type: "array",
+              items: {
+                type: "object",
+                properties: {
+                  title: { type: "string" },
+                  url: { type: "string" }
+                }
+              }
+            }
+          }
+        }, null, 2);
+        if (outFormatSelect) outFormatSelect.value = "structured";
+      }
+      
+      showToast("Template loaded!", "info", 1500);
+      e.target.value = ""; // Reset dropdown
+    });
+  }
 
   const crawlStartBtn = document.getElementById("crawl-start-btn");
   if (crawlStartBtn) crawlStartBtn.addEventListener("click", startCrawlJob);

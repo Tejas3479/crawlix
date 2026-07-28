@@ -13,7 +13,10 @@ import httpx
 from arq.connections import RedisSettings
 from bs4 import BeautifulSoup
 
-from database import BatchJob, CrawlJob, ProxyManager, async_session_maker, init_db
+from database import BatchJob, CrawlJob, ProxyManager, Destination, ScheduledCrawl, async_session_maker, init_db
+from sqlalchemy import select
+from arq.cron import cron
+import openai
 from fetcher import extract_links, playwright_mgr, run_fetch
 
 logger = logging.getLogger("crawlix.worker")
@@ -36,6 +39,160 @@ async def notify_webhook(webhook_url: str, payload: dict):
             logger.info(f"Webhook notification sent to {webhook_url}, status: {resp.status_code}")
     except Exception as e:
         logger.error(f"Failed to send webhook to {webhook_url}: {e}")
+
+async def process_destinations(results: list, destination_ids: list[str]):
+    if not destination_ids or not results:
+        return
+    async with async_session_maker() as session:
+        destinations = []
+        for d_id in destination_ids:
+            dest = await session.get(Destination, d_id)
+            if dest:
+                destinations.append(dest)
+                
+    if not destinations:
+        return
+        
+    logger.info(f"Processing {len(results)} results for {len(destinations)} destinations.")
+    
+    # Generate embeddings if needed
+    embeddings = []
+    openai_key = os.getenv("OPENAI_API_KEY")
+    
+    # Try to prepare text blocks
+    texts = [str(r.get("content", ""))[:8000] for r in results if r.get("content")]
+    if not texts:
+        return
+        
+    try:
+        if openai_key:
+            client = openai.AsyncOpenAI(api_key=openai_key)
+            resp = await client.embeddings.create(input=texts, model="text-embedding-3-small")
+            embeddings = [d.embedding for d in resp.data]
+    except Exception as e:
+        logger.error(f"Failed to generate embeddings: {e}")
+        
+    for dest in destinations:
+        try:
+            if dest.type == "pinecone":
+                from pinecone import Pinecone
+                pc = Pinecone(api_key=dest.config.get("api_key", ""))
+                index = pc.Index(dest.config.get("index_name", ""))
+                
+                vectors = []
+                for i, r in enumerate(results):
+                    if i < len(embeddings) and embeddings[i]:
+                        vectors.append({
+                            "id": f"crawl-{r.get('url', str(i))}",
+                            "values": embeddings[i],
+                            "metadata": {"url": r.get("url"), "title": r.get("title", "")}
+                        })
+                if vectors:
+                    index.upsert(vectors=vectors)
+                    logger.info(f"Pushed {len(vectors)} vectors to Pinecone")
+                    
+            elif dest.type == "supabase":
+                from supabase import create_client
+                supabase = create_client(dest.config.get("url", ""), dest.config.get("key", ""))
+                table_name = dest.config.get("table_name", "documents")
+                
+                rows = []
+                for i, r in enumerate(results):
+                    row = {
+                        "content": r.get("content", ""),
+                        "metadata": {"url": r.get("url"), "title": r.get("title", "")}
+                    }
+                    if i < len(embeddings) and embeddings[i]:
+                        row["embedding"] = embeddings[i]
+                    rows.append(row)
+                if rows:
+                    supabase.table(table_name).insert(rows).execute()
+                    logger.info(f"Pushed {len(rows)} rows to Supabase")
+                    
+            elif dest.type == "weaviate":
+                import weaviate
+                # Very basic weaviate integration
+                client = weaviate.Client(url=dest.config.get("url", ""), auth_client_secret=weaviate.AuthApiKey(api_key=dest.config.get("api_key", "")))
+                class_name = dest.config.get("class_name", "Document")
+                
+                with client.batch as batch:
+                    for i, r in enumerate(results):
+                        properties = {
+                            "content": r.get("content", ""),
+                            "url": r.get("url", ""),
+                            "title": r.get("title", "")
+                        }
+                        vector = embeddings[i] if i < len(embeddings) and embeddings[i] else None
+                        batch.add_data_object(properties, class_name, vector=vector)
+                logger.info(f"Pushed rows to Weaviate")
+                    
+        except Exception as e:
+            logger.error(f"Destination push failed for {dest.name}: {e}")
+
+async def run_scheduled_crawls_cron(ctx: dict):
+    await init_db()
+    from croniter import croniter
+    now = datetime.now(timezone.utc)
+    
+    async with async_session_maker() as session:
+        result = await session.execute(select(ScheduledCrawl).where(ScheduledCrawl.status == "active"))
+        schedules = result.scalars().all()
+        
+        for sched in schedules:
+            if not croniter.is_valid(sched.cron_expression):
+                continue
+                
+            cron_obj = croniter(sched.cron_expression, now)
+            # If next_run_at is None, set it
+            if not sched.next_run_at:
+                sched.next_run_at = cron_obj.get_next(datetime)
+                session.add(sched)
+                continue
+                
+            if now >= sched.next_run_at:
+                # Time to run
+                logger.info(f"Triggering scheduled crawl {sched.id}")
+                
+                # Spawn job
+                payload = sched.payload or {}
+                url = payload.get("url")
+                if url:
+                    job = CrawlJob(
+                        url=url,
+                        max_pages=payload.get("max_pages", 1),
+                        max_depth=payload.get("max_depth", 1),
+                        render_js=payload.get("render_js", False),
+                        output_format=payload.get("output_format", "html"),
+                        webhook_url=payload.get("webhook_url"),
+                        destinations=payload.get("destinations", [])
+                    )
+                    session.add(job)
+                    await session.commit()
+                    
+                    redis_pool = ctx.get("redis")
+                    if redis_pool:
+                        await redis_pool.enqueue_job(
+                            "run_crawl_task",
+                            job.id,
+                            url,
+                            job.max_pages,
+                            job.max_depth,
+                            job.render_js,
+                            job.output_format,
+                            payload.get("strip_links", False),
+                            payload.get("css_selector"),
+                            payload.get("limit_domain", False),
+                            payload.get("actions"),
+                            payload.get("extraction_prompt"),
+                            payload.get("stealth", False),
+                            job.webhook_url
+                        )
+                
+                # Update next run time
+                sched.next_run_at = cron_obj.get_next(datetime)
+                session.add(sched)
+                
+        await session.commit()
 
 async def run_crawl_task(
     ctx: dict,
@@ -207,8 +364,12 @@ async def run_crawl_task(
         # Fetch completed job and trigger webhook
         async with async_session_maker() as session:
             completed_job = await session.get(CrawlJob, crawl_id)
-            if completed_job and completed_job.webhook_url:
-                await notify_webhook(completed_job.webhook_url, completed_job.model_dump())
+            if completed_job:
+                if completed_job.destinations and completed_job.results:
+                    await process_destinations(completed_job.results, completed_job.destinations)
+                    
+                if completed_job.webhook_url:
+                    await notify_webhook(completed_job.webhook_url, completed_job.model_dump())
 
     except Exception as e:
         logger.error(f"ARQ crawl task {crawl_id} failed: {e}")
@@ -315,6 +476,7 @@ async def shutdown(ctx):
 
 class WorkerSettings:
     functions: list = [run_crawl_task, run_batch_crawl_task]  # noqa: RUF012
+    cron_jobs = [cron(run_scheduled_crawls_cron, minute=None)]  # Run every minute
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = get_redis_settings()

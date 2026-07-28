@@ -46,6 +46,22 @@ class CrawlJob(SQLModel, table=True):  # type: ignore[call-arg]
     render_js: bool = False
     output_format: str = "html"
     webhook_url: str | None = None
+    destinations: list[str] = Field(default=[], sa_column=Column(JSON))
+
+class Destination(SQLModel, table=True):  # type: ignore[call-arg]
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    name: str
+    type: str  # pinecone, weaviate, supabase
+    config: dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
+class ScheduledCrawl(SQLModel, table=True):  # type: ignore[call-arg]
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    cron_expression: str
+    payload: dict[str, Any] = Field(default={}, sa_column=Column(JSON))
+    next_run_at: datetime | None = None
+    status: str = Field(default="active")  # active, paused
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class BatchJob(SQLModel, table=True):  # type: ignore[call-arg]
     id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)

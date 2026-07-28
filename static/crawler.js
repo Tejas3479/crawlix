@@ -351,3 +351,90 @@ export function setupCrawlCsvDownload() {
     showToast("Downloaded CSV results!", "success", 1500);
   });
 }
+
+export function setupCrawlScheduling() {
+  const schedBtn = document.getElementById("crawl-schedule-btn");
+  const modal = document.getElementById("schedule-modal");
+  const cancelBtn = document.getElementById("schedule-cancel-btn");
+  const confirmBtn = document.getElementById("schedule-confirm-btn");
+  
+  if (!schedBtn || !modal) return;
+  
+  schedBtn.addEventListener("click", () => {
+    modal.classList.remove("hidden");
+  });
+  
+  cancelBtn.addEventListener("click", () => {
+    modal.classList.add("hidden");
+  });
+  
+  confirmBtn.addEventListener("click", async () => {
+    const cronExpr = document.getElementById("schedule-cron-input").value.trim();
+    if (!cronExpr) {
+      showToast("Cron expression is required", "error");
+      return;
+    }
+    
+    confirmBtn.disabled = true;
+    confirmBtn.textContent = "Scheduling...";
+    
+    // Construct the payload exactly as startCrawlJob does
+    const crawlUrlInput = document.getElementById("crawl-url-input");
+    let urlVal = crawlUrlInput ? crawlUrlInput.value.trim() : "";
+    if (!urlVal || !isValidHttpUrl(urlVal.startsWith("http") ? urlVal : "https://" + urlVal)) {
+      showToast("A valid URL is required to schedule a crawl", "error");
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Schedule";
+      return;
+    }
+    if (!urlVal.startsWith("http")) urlVal = "https://" + urlVal;
+    
+    // Destinations
+    let destinations = [];
+    const destInput = document.getElementById("crawl-destinations-input");
+    if (destInput && destInput.value.trim()) {
+      destinations = destInput.value.split(",").map(s => s.trim()).filter(Boolean);
+    }
+    
+    const payload = {
+      url: urlVal,
+      max_pages: parseInt(document.getElementById("crawl-max-pages-select").value, 10),
+      max_depth: 3,
+      render_js: document.getElementById("crawl-render-js-checkbox").checked,
+      stealth: document.getElementById("crawl-stealth-checkbox").checked,
+      output_format: document.getElementById("crawl-format-select").value,
+      limit_domain: document.getElementById("crawl-limit-domain-checkbox").checked,
+      destinations: destinations,
+      actions: [],
+      extraction_prompt: document.getElementById("crawl-extraction-prompt")?.value.trim() || null
+    };
+    
+    try {
+      const headers = { "Content-Type": "application/json" };
+      if (state.apiKey) headers["x-api-key"] = state.apiKey;
+      
+      const res = await fetch("/api/schedule", {
+        method: "POST",
+        headers,
+        body: JSON.stringify({
+          cron_expression: cronExpr,
+          payload: payload
+        })
+      });
+      
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        showToast("Schedule failed: " + (err.detail || "Invalid cron"), "error");
+        return;
+      }
+      
+      showToast("Crawl scheduled successfully!", "success", 2000);
+      modal.classList.add("hidden");
+    } catch(err) {
+      showToast("Connection failed", "error");
+    } finally {
+      confirmBtn.disabled = false;
+      confirmBtn.textContent = "Schedule";
+    }
+  });
+}
