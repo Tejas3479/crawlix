@@ -1,3 +1,3 @@
-from .client import CrawlixClient, AsyncCrawlixClient, CrawlixError
+from .client import AsyncCrawlixClient, CrawlixClient, CrawlixError
 
-__all__ = ["CrawlixClient", "AsyncCrawlixClient", "CrawlixError"]
+__all__ = ["AsyncCrawlixClient", "CrawlixClient", "CrawlixError"]
