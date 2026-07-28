@@ -7,6 +7,8 @@
 [![Python 3.11+](https://img.shields.io/badge/Python-3.11+-60a5fa.svg)](https://www.python.org/)
 [![FastAPI](https://img.shields.io/badge/FastAPI-0.111+-34d399.svg)](https://fastapi.tiangolo.com/)
 [![Docker](https://img.shields.io/badge/Docker-ready-60a5fa.svg)](docker-compose.yml)
+[![Python SDK](https://img.shields.io/badge/SDK-Python-blue.svg)](sdks/python/)
+[![Node SDK](https://img.shields.io/badge/SDK-Node.js-green.svg)](sdks/node/)
 
 </div>
 
@@ -39,6 +41,9 @@ It ships with a full **web dashboard** so you can use it without writing any cod
 | ⚡ **Proxy Support** | Rotate proxies per request (comma/newline separated) |
 | 🧩 **Browser Actions** | Click, type, scroll, wait, hover — before scraping |
 | 🔑 **API Key Auth** | Multi-key authentication via environment variable |
+| 🧠 **AI Vector Pipelines** | Auto-push scraped embeddings to Pinecone, Weaviate, Supabase |
+| 🧩 **Anti-Bot / Captcha** | Native 2Captcha & CapSolver support for complex bot protections |
+| ⏰ **Scheduled Crawls** | Cron-based scheduling via ARQ worker |
 | 📊 **Timing Waterfall** | Real server-side timing: Security / Connect / TTFB / Processing |
 
 ### Dashboard Features
@@ -50,6 +55,16 @@ It ships with a full **web dashboard** so you can use it without writing any cod
 - 🔒 **XSS-safe JSON Tree** — HTML-escaped key/value rendering
 
 ---
+
+---
+
+## 🆚 Why Crawlix over managed SaaS (e.g., Firecrawl)?
+
+1. **Absolute Data Privacy (Self-Hosted)**: Keep sensitive proprietary data entirely inside your VPC (SOC2/HIPAA/GDPR compliant).
+2. **Infinite Scale Economics**: Zero per-request markup. Pay only for your raw compute and wholesale proxy bandwidth.
+3. **Bring Your Own LLM**: Connect directly to OpenAI/Anthropic/Gemini using your own API keys at wholesale token prices.
+4. **Complete Engine Control**: Modify the core Playwright logic, inject specific browser cookies, and integrate custom 2Captcha/CapSolver logic natively.
+5. **BYO Proxies**: Connect your own dedicated residential/datacenter proxies to avoid sharing IP pools.
 
 ## 🚀 Quick Start
 

@@ -5,6 +5,26 @@ Format follows [Keep a Changelog](https://keepachangelog.com/en/1.0.0/).
 
 ---
 
+## [1.2.0] — 2026-07-28
+
+### Added
+- **AI Vector Pipelines** — Push embeddings natively to Pinecone, Weaviate, and Supabase via new `Destination` configurations.
+- **Scheduled Crawls** — Schedule recurring extractions using `croniter` and the ARQ background worker.
+- **Client SDKs** — Official Python and Node.js (TypeScript) SDKs for easy integration.
+- **Captcha Solving** — Integration with 2Captcha and CapSolver for bypassing complex anti-bot challenges during scraping.
+- **Database Backend** — Shifted core states (Jobs, API Keys, Proxies, Destinations) to SQLite via SQLModel/SQLAlchemy.
+- **API Key DB Support** — `verify_api_key` now checks both `VALID_KEYS` environment variable and SQLite `ApiKey` table.
+- **Docker Image CI** — Automated Docker build testing in GitHub Actions.
+
+### Changed
+- Replaced legacy `SESSIONS_FILE` and `CRAWLS_FILE` disk writes with proper SQLite database backend.
+- Updated `worker.py` and `app.py` with Python 3.9+ type annotations (`dict` instead of `Dict`) for `ruff` compliance.
+- Dockerfile now runs `apt-get` update prior to `playwright install-deps` to fix broken package cache.
+
+---
+
+
+
 ## [1.1.0] — 2026-07-22
 
 ### Added
