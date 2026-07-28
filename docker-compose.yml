@@ -12,4 +12,19 @@ services:
       - MAX_PLAYWRIGHT_INSTANCES=3
       - SESSION_TTL_MINUTES=30
       - MAX_SESSIONS=100
+      - REDIS_URL=redis://redis:6379/0
+    depends_on:
+      - redis
     restart: unless-stopped
+
+  redis:
+    image: redis:7-alpine
+    container_name: crawlix_redis
+    ports:
+      - "6379:6379"
+    volumes:
+      - redis_data:/data
+    restart: unless-stopped
+
+volumes:
+  redis_data:

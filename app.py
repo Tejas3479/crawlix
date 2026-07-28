@@ -8,6 +8,7 @@ if sys.platform == "win32":
 import json
 import logging
 import time
+import redis.asyncio as redis
 from contextlib import asynccontextmanager
 from typing import Literal
 from urllib.parse import urlparse
@@ -69,6 +70,9 @@ MAX_BODY_SIZE_BYTES = int(os.getenv("MAX_REQUEST_BODY_SIZE", str(10 * 1024 * 102
 MAX_SERVER_CRAWL_PAGES = int(os.getenv("MAX_CRAWL_PAGES", "100"))
 MAX_SERVER_CRAWL_DEPTH = int(os.getenv("MAX_CRAWL_DEPTH", "10"))
 
+REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+redis_client = redis.from_url(REDIS_URL, decode_responses=True)
+
 class RateLimiter:
     """
     In-memory sliding window rate limiter per client IP or API key.
@@ -76,49 +80,33 @@ class RateLimiter:
     def __init__(self, requests_per_minute: int = RATE_LIMIT_PER_MINUTE, window_seconds: int = 60):
         self.rpm = requests_per_minute
         self.window = window_seconds
-        self.requests: dict[str, list[float]] = {}
-        self._lock = asyncio.Lock()
 
     async def check(self, key: str) -> tuple[bool, int, int]:
-        """
-        Returns (is_limited, remaining_requests, reset_seconds)
-        """
         if self.rpm <= 0:
             return False, 9999, 0
 
-        now = time.monotonic()
-        async with self._lock:
-            timestamps = self.requests.get(key, [])
-            cutoff = now - self.window
-            timestamps = [t for t in timestamps if t > cutoff]
+        now = time.time()
+        cutoff = now - self.window
+        redis_key = f"rate_limit:{key}"
 
-            if len(timestamps) >= self.rpm:
-                oldest = timestamps[0]
-                reset_seconds = max(1, int(self.window - (now - oldest)))
-                self.requests[key] = timestamps
-                return True, 0, reset_seconds
+        async with redis_client.pipeline(transaction=True) as pipe:
+            pipe.zremrangebyscore(redis_key, 0, cutoff)
+            pipe.zadd(redis_key, {str(now): now})
+            pipe.zcard(redis_key)
+            pipe.expire(redis_key, self.window)
+            results = await pipe.execute()
 
-            timestamps.append(now)
-            self.requests[key] = timestamps
-            remaining = self.rpm - len(timestamps)
-            return False, remaining, self.window
+        count = results[2]
+        if count > self.rpm:
+            return True, 0, self.window
+
+        remaining = self.rpm - count
+        return False, remaining, self.window
 
     async def cleanup_loop(self):
         try:
             while True:
-                await asyncio.sleep(120)
-                now = time.monotonic()
-                cutoff = now - self.window
-                async with self._lock:
-                    to_delete = []
-                    for key, ts_list in self.requests.items():
-                        filtered = [t for t in ts_list if t > cutoff]
-                        if filtered:
-                            self.requests[key] = filtered
-                        else:
-                            to_delete.append(key)
-                    for k in to_delete:
-                        del self.requests[k]
+                await asyncio.sleep(86400)
         except asyncio.CancelledError:
             pass
 
@@ -424,12 +412,12 @@ async def fetch_endpoint(req: FetchRequest):
 # GET /api/sessions
 @app.get("/api/sessions", dependencies=[Depends(verify_api_key)])
 async def list_sessions():
-    return session_manager.list_sessions()
+    return await session_manager.list_sessions()
 
 # DELETE /api/sessions/{session_id}
 @app.delete("/api/sessions/{session_id}", dependencies=[Depends(verify_api_key)])
 async def delete_session(session_id: str):
-    if session_id not in session_manager.sessions:
+    if not await session_manager.get_session_meta(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
     await session_manager.delete_session(session_id)
     return {"deleted": True, "session_id": session_id}
@@ -439,7 +427,7 @@ async def delete_session(session_id: str):
 async def health():
     return {
         "status": "ok",
-        "active_sessions": len(session_manager.sessions),
+        "active_sessions": await session_manager.count_sessions(),
         "playwright_slots_free": playwright_mgr.slots_free
     }
 

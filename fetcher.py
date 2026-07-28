@@ -14,10 +14,12 @@ import random
 import re
 import socket
 import time
+import redis.asyncio as redis
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime as dt_class
-from datetime import timezone
+from datetime import time
+import redis.asyncio as rediszone
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -298,204 +300,139 @@ class PlaywrightManager:
 
 class SessionManager:
     """
-    Manages both curl_cffi and Playwright sessions keyed by session_id with disk persistence.
+    Manages both curl_cffi and Playwright sessions keyed by session_id.
+    Metadata is persisted in Redis, while actual connections are held in local memory.
     """
     def __init__(self):
-        self.sessions: dict[str, dict] = {}
+        self.local_sessions: dict[str, dict] = {}
         self.ttl_seconds: int = SESSION_TTL_MINUTES * 60
         self._lock: asyncio.Lock = asyncio.Lock()
-        self._load_from_disk()
 
-    def _save_to_disk(self):
-        try:
-            os.makedirs(DATA_DIR, exist_ok=True)
-            serializable = {}
-            for sid, s in self.sessions.items():
-                created_at = s["created_at"].isoformat() if isinstance(s["created_at"], dt_class) else str(s["created_at"])
-                last_active = s["last_active"].isoformat() if isinstance(s["last_active"], dt_class) else str(s["last_active"])
-                serializable[sid] = {
-                    "session_id": s["session_id"],
-                    "engine": s["engine"],
-                    "cookies": s.get("cookies", {}),
-                    "created_at": created_at,
-                    "last_active": last_active,
-                    "request_count": s.get("request_count", 0)
-                }
-            tmp_file = SESSIONS_FILE + ".tmp"
-            with open(tmp_file, "w", encoding="utf-8") as f:
-                json.dump(serializable, f, indent=2)
-            os.replace(tmp_file, SESSIONS_FILE)
-        except Exception as e:
-            logger.error(f"Failed to persist sessions to disk: {e}")
+    async def get_session_meta(self, session_id: str) -> dict | None:
+        data = await redis_client.get(f"session:{session_id}")
+        if data:
+            return json.loads(data)
+        return None
 
-    def _load_from_disk(self):
-        if not os.path.exists(SESSIONS_FILE):
-            return
-        try:
-            with open(SESSIONS_FILE, "r", encoding="utf-8") as f:
-                data = json.load(f)
-            now = dt_class.now(timezone.utc)
-            loaded_count = 0
-            for sid, s in data.items():
-                try:
-                    created_at = dt_class.fromisoformat(s["created_at"])
-                    last_active = dt_class.fromisoformat(s["last_active"])
-                except Exception:
-                    created_at = now
-                    last_active = now
-
-                delta = (now - last_active).total_seconds()
-                if delta > self.ttl_seconds:
-                    continue
-
-                self.sessions[sid] = {
-                    "session_id": sid,
-                    "curl_session": None,
-                    "playwright_context": None,
-                    "cookies": s.get("cookies", {}),
-                    "last_active": last_active,
-                    "created_at": created_at,
-                    "request_count": s.get("request_count", 0),
-                    "engine": s.get("engine", "curl")
-                }
-                loaded_count += 1
-            if loaded_count > 0:
-                logger.info(f"Loaded {loaded_count} active sessions from disk persistence.")
-        except Exception as e:
-            logger.error(f"Failed to load sessions from disk: {e}")
+    async def count_sessions(self) -> int:
+        cursor = 0
+        count = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor, match="session:*", count=100)
+            count += len(keys)
+            if cursor == 0:
+                break
+        return count
 
     async def get_or_create(self, session_id: str, engine: str) -> dict:
         async with self._lock:
-            now = dt_class.now(timezone.utc)
-            if session_id not in self.sessions:
+            now_str = dt_class.now(timezone.utc).isoformat()
+            redis_key = f"session:{session_id}"
+            
+            data = await redis_client.get(redis_key)
+            if data:
+                session_meta = json.loads(data)
+                if session_meta["engine"] != engine:
+                    logger.info(f"Switching session engine for {session_id} from {session_meta['engine']} to {engine}")
+                    session_meta["engine"] = engine
+                    if session_id in self.local_sessions:
+                        await self._close_local(session_id)
+                session_meta["last_active"] = now_str
+                session_meta["request_count"] += 1
+            else:
                 logger.info(f"Creating new session context: {session_id} (engine: {engine})")
-                self.sessions[session_id] = {
+                session_meta = {
                     "session_id": session_id,
-                    "curl_session": None,
-                    "playwright_context": None,
                     "cookies": {},
-                    "last_active": now,
-                    "created_at": now,
-                    "request_count": 0,
+                    "last_active": now_str,
+                    "created_at": now_str,
+                    "request_count": 1,
                     "engine": engine
                 }
-            else:
-                session = self.sessions[session_id]
-                if session["engine"] != engine:
-                    logger.info(f"Switching session engine for {session_id} from {session['engine']} to {engine}")
-                    # Close old engine resource
-                    if session["curl_session"]:
-                        try:
-                            await session["curl_session"].close()
-                        except Exception as e:
-                            logger.error(f"Error closing curl session: {e}")
-                        session["curl_session"] = None
-                    if session["playwright_context"]:
-                        try:
-                            await session["playwright_context"].close()
-                        except Exception as e:
-                            logger.error(f"Error closing playwright context: {e}")
-                        session["playwright_context"] = None
-                    
-                    session["engine"] = engine
+                
+            await redis_client.setex(redis_key, self.ttl_seconds, json.dumps(session_meta))
             
-            session = self.sessions[session_id]
-            session["last_active"] = now
-            session["request_count"] += 1
-            
-            # Enforce MAX_SESSIONS: evict LRU session when at or over the limit
-            if len(self.sessions) >= MAX_SESSIONS:
-                lru_id = None
-                lru_time = None
-                for sid, s in self.sessions.items():
-                    if sid == session_id:
-                        continue
-                    if lru_time is None or s["last_active"] < lru_time:
-                        lru_time = s["last_active"]
-                        lru_id = sid
-                if lru_id:
-                    logger.info(f"Evicting least recently used session: {lru_id}")
-                    evict_session = self.sessions.pop(lru_id)
-                    if evict_session["curl_session"]:
-                        try:
-                            await evict_session["curl_session"].close()
-                        except Exception:
-                            pass
-                    if evict_session["playwright_context"]:
-                        try:
-                            await evict_session["playwright_context"].close()
-                        except Exception:
-                            pass
-            
-            self._save_to_disk()
-            return session
+            if session_id not in self.local_sessions:
+                self.local_sessions[session_id] = {
+                    "curl_session": None,
+                    "playwright_context": None
+                }
+                
+            self.local_sessions[session_id].update(session_meta)
+            return self.local_sessions[session_id]
 
     async def update_cookies(self, session_id: str, new_cookies: dict):
         async with self._lock:
-            if session_id in self.sessions:
-                self.sessions[session_id]["cookies"].update(new_cookies)
-                self._save_to_disk()
+            redis_key = f"session:{session_id}"
+            data = await redis_client.get(redis_key)
+            if data:
+                session_meta = json.loads(data)
+                session_meta["cookies"].update(new_cookies)
+                await redis_client.setex(redis_key, self.ttl_seconds, json.dumps(session_meta))
 
     async def delete_session(self, session_id: str):
         async with self._lock:
-            if session_id in self.sessions:
-                logger.info(f"Deleting session context: {session_id}")
-                session = self.sessions.pop(session_id)
-                if session["curl_session"]:
-                    try:
-                        await session["curl_session"].close()
-                    except Exception:
-                        pass
-                if session["playwright_context"]:
-                    try:
-                        await session["playwright_context"].close()
-                    except Exception:
-                        pass
-                self._save_to_disk()
+            await redis_client.delete(f"session:{session_id}")
+            await self._close_local(session_id)
+
+    async def _close_local(self, session_id: str):
+        if session_id in self.local_sessions:
+            logger.info(f"Deleting local session context: {session_id}")
+            session = self.local_sessions.pop(session_id)
+            if session.get("curl_session"):
+                try:
+                    await session["curl_session"].close()
+                except Exception:
+                    pass
+            if session.get("playwright_context"):
+                try:
+                    await session["playwright_context"].close()
+                except Exception:
+                    pass
 
     async def close_all(self):
-        logger.info("Closing all active session contexts...")
-        session_ids = list(self.sessions.keys())
-        for sid in session_ids:
-            await self.delete_session(sid)
-        self._save_to_disk()
+        logger.info("Closing all active local session contexts...")
+        for sid in list(self.local_sessions.keys()):
+            await self._close_local(sid)
 
     async def cleanup_loop(self):
         try:
             while True:
                 await asyncio.sleep(300)
-                now = dt_class.now(timezone.utc)
                 expired_ids = []
                 async with self._lock:
-                    for sid, s in self.sessions.items():
-                        delta = (now - s["last_active"]).total_seconds()
-                        if delta > self.ttl_seconds:
+                    for sid in list(self.local_sessions.keys()):
+                        if not await redis_client.exists(f"session:{sid}"):
                             expired_ids.append(sid)
-
                 for sid in expired_ids:
-                    logger.info(f"Session {sid} expired due to inactivity. Cleaning up.")
-                    await self.delete_session(sid)
-                if expired_ids:
-                    self._save_to_disk()
+                    logger.info(f"Session {sid} expired in Redis. Cleaning up locally.")
+                    await self._close_local(sid)
         except asyncio.CancelledError:
             logger.info("Session cleanup loop cancelled gracefully.")
             raise
 
-    def list_sessions(self) -> list[dict]:
+    async def list_sessions(self) -> list[dict]:
         result = []
-        # Shallow copy to prevent dictionary modification errors during async execution
-        sessions_copy = list(self.sessions.items())
-        for sid, s in sessions_copy:
-            created_str = s["created_at"].isoformat() if isinstance(s["created_at"], dt_class) else str(s["created_at"])
-            last_active_str = s["last_active"].isoformat() if isinstance(s["last_active"], dt_class) else str(s["last_active"])
-            result.append({
-                "session_id": s["session_id"],
-                "engine": s["engine"],
-                "created_at": created_str + ("Z" if not created_str.endswith("Z") else ""),
-                "last_active": last_active_str + ("Z" if not last_active_str.endswith("Z") else ""),
-                "request_count": s["request_count"],
-                "cookie_count": len(s["cookies"])
-            })
+        cursor = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor, match="session:*", count=100)
+            if keys:
+                values = await redis_client.mget(keys)
+                for val in values:
+                    if val:
+                        s = json.loads(val)
+                        created_str = s["created_at"]
+                        last_active_str = s["last_active"]
+                        result.append({
+                            "session_id": s["session_id"],
+                            "engine": s["engine"],
+                            "created_at": created_str + ("Z" if not created_str.endswith("Z") else ""),
+                            "last_active": last_active_str + ("Z" if not last_active_str.endswith("Z") else ""),
+                            "request_count": s["request_count"],
+                            "cookie_count": len(s["cookies"])
+                        })
+            if cursor == 0:
+                break
         return result
 
 
@@ -803,7 +740,8 @@ async def run_fetch(
     Returns dict with keys:
       final_url, status_code, raw_html, content, retries_used, error, error_message, screenshot, timing
     """
-    import time as _time
+    import time
+import redis.asyncio as redis as _time
     _t0 = _time.monotonic()
     # 1. SSRF Safety Check (async-safe DNS resolution)
     if not await is_ssrf_safe(url):
