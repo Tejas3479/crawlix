@@ -1,9 +1,11 @@
-import pytest
 import os
-from unittest.mock import patch, AsyncMock, MagicMock
-from fastapi.testclient import TestClient
+from unittest.mock import MagicMock, patch
+
 import httpx
+import pytest
+
 from app import app
+
 
 @pytest.fixture(autouse=True)
 def setup_env():

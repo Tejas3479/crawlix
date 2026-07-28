@@ -13,6 +13,7 @@ import os
 import random
 import re
 import socket
+import time
 import uuid
 from contextlib import asynccontextmanager
 from datetime import datetime as dt_class
@@ -279,8 +280,8 @@ class PlaywrightManager:
                 """
                 await context.add_init_script(nav_script)
 
-            if extra_headers:
-                await context.set_extra_http_headers(extra_headers)
+            if user_headers:
+                await context.set_extra_http_headers(user_headers)
                 
             yield context
         finally:
@@ -825,7 +826,6 @@ async def run_fetch(
     if proxy_url:
         proxies_list = [p.strip() for p in re.split(r'[,\r\n]+', proxy_url) if p.strip()]
 
-    last_error = None
     last_status = 0
     final_url = url
     status_code = 0
@@ -900,7 +900,7 @@ async def run_fetch(
                             if "timeout" in str(goto_err).lower():
                                 logger.warning(f"Navigation to {url} timed out (wait_until={wait_until}). Continuing with partially loaded page content.")
                             else:
-                                raise goto_err
+                                raise
                         status_code = response.status if response else 200
                         last_status = status_code
                         final_url = page.url
@@ -1012,7 +1012,6 @@ async def run_fetch(
             break
 
         except Exception as e:
-            last_error = e
             e_str = str(e)
             err_type = type(e).__name__
 

@@ -37,9 +37,9 @@ log_handler.setFormatter(logging.Formatter("%(asctime)s [%(levelname)s] %(name)s
 logging.basicConfig(level=logging.INFO, handlers=[log_handler])
 
 # API KEY AUTH
-VALID_KEYS: set[str] = set(
+VALID_KEYS: set[str] = {
     k.strip() for k in os.getenv("API_KEYS", "").split(",") if k.strip()
-)
+}
 if not VALID_KEYS:
     logger.warning("API_KEYS not set. Authentication is DISABLED.")
 
