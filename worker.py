@@ -476,7 +476,7 @@ async def shutdown(ctx):
 
 class WorkerSettings:
     functions: list = [run_crawl_task, run_batch_crawl_task]  # noqa: RUF012
-    cron_jobs = [cron(run_scheduled_crawls_cron, minute=None)]  # Run every minute
+    cron_jobs: list = [cron(run_scheduled_crawls_cron, minute=None)]  # noqa: RUF012
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = get_redis_settings()
