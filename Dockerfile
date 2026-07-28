@@ -1,4 +1,4 @@
-FROM python:3.11-slim
+FROM mcr.microsoft.com/playwright/python:v1.44.0-jammy
 
 # Set environment variables
 ENV PYTHONUNBUFFERED=1 \
@@ -7,18 +7,9 @@ ENV PYTHONUNBUFFERED=1 \
 
 WORKDIR /app
 
-# Install basic system packages
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    curl \
-    && rm -rf /var/lib/apt/lists/*
-
 # Install python dependencies
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
-
-# Install Playwright Chromium and its Linux system libraries
-RUN playwright install chromium
-RUN apt-get update && playwright install-deps chromium && rm -rf /var/lib/apt/lists/*
 
 # Copy the rest of the application
 COPY . .
