@@ -42,3 +42,7 @@ jobs:
       
     - name: Run Pytest
       run: pytest -v tests/
+      
+    - name: Build Docker Image
+      run: docker build -t crawlix:latest .
+

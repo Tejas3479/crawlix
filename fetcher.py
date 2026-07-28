@@ -166,8 +166,6 @@ SESSION_TTL_MINUTES = int(os.getenv("SESSION_TTL_MINUTES", "30"))
 MAX_SESSIONS = int(os.getenv("MAX_SESSIONS", "100"))
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
-SESSIONS_FILE = os.path.join(DATA_DIR, "sessions.json")
-CRAWLS_FILE = os.path.join(DATA_DIR, "crawls.json")
 
 
 class PlaywrightManager:

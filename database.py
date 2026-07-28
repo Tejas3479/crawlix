@@ -74,6 +74,11 @@ class BatchJob(SQLModel, table=True):  # type: ignore[call-arg]
     export_path: str | None = None
     error_message: str | None = None
 
+class ApiKey(SQLModel, table=True):  # type: ignore[call-arg]
+    key: str = Field(primary_key=True)
+    name: str | None = None
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class Proxy(SQLModel, table=True):  # type: ignore[call-arg]
     id: int | None = Field(default=None, primary_key=True)
     url: str = Field(sa_column=Column("url", String, unique=True))
