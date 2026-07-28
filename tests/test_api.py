@@ -11,10 +11,13 @@ client = TestClient(app)
 # We will use pytest-asyncio for async httpx tests
 # But for now, we'll configure pytest-asyncio to handle our tests.
 
+from database import init_db
+
 @pytest.fixture(autouse=True)
-def setup_env():
+async def setup_env():
     os.environ["API_KEYS"] = "test-key"
     os.environ["DISABLE_SSRF_CHECK"] = "true"
+    await init_db()
     yield
     if "API_KEYS" in os.environ:
         del os.environ["API_KEYS"]
@@ -98,3 +101,17 @@ async def test_session_list_and_delete(async_client):
         r3 = await async_client.get("/api/sessions", headers=headers)
         session_ids_after = [s["session_id"] for s in r3.json()]
         assert "verify-session-001" not in session_ids_after
+
+@pytest.mark.asyncio
+async def test_batch_crawl_creation(async_client):
+    headers = {"x-api-key": "test-key"}
+    csv_data = "url\nhttps://example.com\nhttps://example.org\n"
+    files = {"file": ("test.csv", csv_data.encode("utf-8"), "text/csv")}
+    
+    r = await async_client.post("/api/crawl/batch", headers=headers, files=files)
+    assert r.status_code == 200
+    data = r.json()
+    assert "batch_id" in data
+    assert data["total_urls"] == 2
+    assert data["status"] == "processing"
+

@@ -5,6 +5,7 @@ import sys
 if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
+import csv
 import json
 import logging
 import time
@@ -13,14 +14,14 @@ from typing import Literal
 from urllib.parse import urlparse
 
 import redis.asyncio as redis
-from fastapi import Depends, FastAPI, HTTPException, Request
+from fastapi import Depends, FastAPI, File, HTTPException, Request, UploadFile
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import JSONResponse
+from fastapi.responses import FileResponse, JSONResponse
 from fastapi.security import APIKeyHeader, HTTPAuthorizationCredentials, HTTPBearer
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
-from database import init_db
+from database import BatchJob, async_session_maker, init_db
 from fetcher import (
     SensitiveDataFilter,
     crawl_manager,
@@ -118,6 +119,11 @@ rate_limiter = RateLimiter()
 _cleanup_task: asyncio.Task | None = None
 _rate_limit_task: asyncio.Task | None = None
 
+from arq import create_pool
+
+from worker import get_redis_settings
+
+
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     global _cleanup_task, _rate_limit_task
@@ -127,6 +133,14 @@ async def lifespan(app: FastAPI):
         await playwright_mgr.initialize()
     except Exception as e:
         logger.warning(f"Playwright pre-initialization skipped on startup ({e}). Will initialize lazily when JS rendering is requested.")
+
+    try:
+        app.state.arq_pool = await create_pool(get_redis_settings())
+        crawl_manager.arq_pool = app.state.arq_pool
+        logger.info("Connected to ARQ Redis worker pool.")
+    except Exception as e:
+        logger.warning(f"ARQ pool connection skipped: {e}")
+
     _cleanup_task = asyncio.create_task(session_manager.cleanup_loop())
     _rate_limit_task = asyncio.create_task(rate_limiter.cleanup_loop())
     logger.info("Crawlix application started, engine initialized, and rate limiter active.")
@@ -318,6 +332,7 @@ class CrawlRequest(BaseModel):
     actions: list[ActionConfig] | None = Field(None, max_length=20)
     extraction_prompt: str | None = Field(None, max_length=5000)
     stealth: bool = False
+    webhook_url: HttpUrl | None = None
 
     @field_validator("url")
     @classmethod
@@ -447,7 +462,8 @@ async def start_crawl(req: CrawlRequest):
         limit_domain=req.limit_domain,
         actions=req.actions,
         extraction_prompt=req.extraction_prompt,
-        stealth=req.stealth
+        stealth=req.stealth,
+        webhook_url=str(req.webhook_url) if req.webhook_url else None
     )
     return {"crawl_id": crawl_id, "status": "running"}
 
@@ -468,6 +484,71 @@ async def delete_crawl(crawl_id: str):
         raise HTTPException(status_code=404, detail="Crawl not found")
     return {"deleted": True, "crawl_id": crawl_id}
 
+
+# BATCH CRAWL ENDPOINTS
+@app.post("/api/crawl/batch", dependencies=[Depends(verify_api_key)])
+async def create_batch_crawl(
+    file: UploadFile = File(...),
+    render_js: bool = False,
+    output_format: str = "markdown",
+    webhook_url: str | None = None
+):
+    content = await file.read()
+    lines = content.decode("utf-8", errors="ignore").splitlines()
+    reader = csv.reader(lines)
+    urls = []
+    for row in reader:
+        for col in row:
+            col_clean = col.strip()
+            if col_clean.startswith(("http://", "https://")):
+                urls.append(col_clean)
+    urls = list(dict.fromkeys(urls))
+    if not urls:
+        raise HTTPException(status_code=400, detail="No valid HTTP/HTTPS URLs found in uploaded CSV file.")
+
+    async with async_session_maker() as session:
+        batch = BatchJob(
+            total_urls=len(urls),
+            webhook_url=webhook_url,
+            status="pending"
+        )
+        session.add(batch)
+        await session.commit()
+        await session.refresh(batch)
+        batch_id = batch.id
+
+    pool = getattr(app.state, "arq_pool", None)
+    if pool:
+        try:
+            await pool.enqueue_job("run_batch_crawl_task", batch_id, urls, render_js, output_format, webhook_url)
+        except Exception as e:
+            logger.warning(f"Failed to enqueue batch job to ARQ pool ({e}), running in background task.")
+            from worker import run_batch_crawl_task
+            asyncio.create_task(run_batch_crawl_task({}, batch_id, urls, render_js, output_format, webhook_url))
+    else:
+        from worker import run_batch_crawl_task
+        asyncio.create_task(run_batch_crawl_task({}, batch_id, urls, render_js, output_format, webhook_url))
+
+    return {"batch_id": batch_id, "total_urls": len(urls), "status": "processing"}
+
+@app.get("/api/crawl/batch/{batch_id}", dependencies=[Depends(verify_api_key)])
+async def get_batch_crawl(batch_id: str):
+    async with async_session_maker() as session:
+        batch = await session.get(BatchJob, batch_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch job not found")
+        return batch.model_dump()
+
+@app.get("/api/crawl/batch/{batch_id}/download", dependencies=[Depends(verify_api_key)])
+async def download_batch_results(batch_id: str):
+    async with async_session_maker() as session:
+        batch = await session.get(BatchJob, batch_id)
+        if not batch:
+            raise HTTPException(status_code=404, detail="Batch job not found")
+        if batch.status != "completed" or not batch.export_path or not os.path.exists(batch.export_path):
+            raise HTTPException(status_code=400, detail="Batch job is not completed or export file is missing")
+        return FileResponse(batch.export_path, filename=f"batch_{batch_id}.json", media_type="application/json")
+
 # Mount static files
 if os.path.isdir("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
@@ -483,7 +564,7 @@ if __name__ == "__main__":
 from pydantic import BaseModel
 from sqlalchemy import select
 
-from database import Proxy, async_session_maker
+from database import Proxy
 
 
 class ProxyCreate(BaseModel):

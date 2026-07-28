@@ -39,6 +39,18 @@ class CrawlJob(SQLModel, table=True):  # type: ignore[call-arg]
     max_depth: int = 1
     render_js: bool = False
     output_format: str = "html"
+    webhook_url: str | None = None
+
+class BatchJob(SQLModel, table=True):  # type: ignore[call-arg]
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    status: str = Field(default="pending")  # pending, processing, completed, failed
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+    completed_at: datetime | None = None
+    total_urls: int = 0
+    processed_urls: int = 0
+    webhook_url: str | None = None
+    export_path: str | None = None
+    error_message: str | None = None
 
 class Proxy(SQLModel, table=True):  # type: ignore[call-arg]
     id: int | None = Field(default=None, primary_key=True)

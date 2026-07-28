@@ -1062,8 +1062,24 @@ def extract_links(html: str, base_url: str) -> list[str]:
 class CrawlManager:
     def __init__(self):
         self.tasks: dict[str, asyncio.Task] = {}
+        self.arq_pool = None
 
-    async def create_crawl(self, url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False) -> str:
+    async def create_crawl(
+        self,
+        url: str,
+        max_pages: int,
+        max_depth: int,
+        render_js: bool,
+        output_format: str,
+        strip_links: bool,
+        css_selector: str | None,
+        limit_domain: bool,
+        actions: list | None,
+        extraction_prompt: str | None = None,
+        stealth: bool = False,
+        webhook_url: str | None = None,
+        arq_pool=None
+    ) -> str:
         async with async_session_maker() as session:
             job = CrawlJob(
                 url=url,
@@ -1071,6 +1087,7 @@ class CrawlManager:
                 max_depth=max_depth,
                 render_js=render_js,
                 output_format=output_format,
+                webhook_url=webhook_url,
                 status="running"
             )
             session.add(job)
@@ -1078,7 +1095,31 @@ class CrawlManager:
             await session.refresh(job)
             crawl_id = job.id
             
-        task = asyncio.create_task(self._run_crawl(crawl_id, url, max_pages, max_depth, render_js, output_format, strip_links, css_selector, limit_domain, actions, extraction_prompt, stealth))
+        pool = arq_pool or self.arq_pool
+        if pool:
+            try:
+                await pool.enqueue_job(
+                    "run_crawl_task",
+                    crawl_id,
+                    url,
+                    max_pages,
+                    max_depth,
+                    render_js,
+                    output_format,
+                    strip_links,
+                    css_selector,
+                    limit_domain,
+                    actions,
+                    extraction_prompt,
+                    stealth,
+                    webhook_url
+                )
+                logger.info(f"Enqueued crawl job {crawl_id} to ARQ worker queue")
+                return crawl_id
+            except Exception as e:
+                logger.warning(f"Failed to enqueue to ARQ pool ({e}), falling back to local task.")
+
+        task = asyncio.create_task(self._run_crawl(crawl_id, url, max_pages, max_depth, render_js, output_format, strip_links, css_selector, limit_domain, actions, extraction_prompt, stealth, webhook_url))
         self.tasks[crawl_id] = task
         return crawl_id
 
@@ -1141,7 +1182,7 @@ class CrawlManager:
             session.add(job)
             await session.commit()
 
-    async def _run_crawl(self, crawl_id: str, seed_url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False):
+    async def _run_crawl(self, crawl_id: str, seed_url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False, webhook_url: str | None = None):
         queue = [(seed_url, 0)] # (url, depth)
         visited = set()
         crawled_count = 0

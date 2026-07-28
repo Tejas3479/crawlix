@@ -12,3 +12,4 @@ redis==5.0.4
 sqlmodel==0.0.18
 aiosqlite==0.20.0
 fakeredis==2.23.2
+arq==0.26.1
