@@ -625,7 +625,7 @@ async def process_content(
                     try:
                         async with httpx.AsyncClient(timeout=60.0) as client:
                             if current_provider == "openai":
-                                target_model = llm_model if current_provider == llm_provider else "gpt-4o-mini"
+                                target_model = llm_model if current_provider == llm_provider else "gpt-5.6-luna"
                                 headers = {
                                     "Authorization": f"Bearer {current_key}",
                                     "Content-Type": "application/json"
@@ -655,7 +655,7 @@ async def process_content(
                                 resp.raise_for_status()
                                 result = resp.json()["choices"][0]["message"]["content"]
                             elif current_provider == "anthropic":
-                                target_model = llm_model if current_provider == llm_provider else "claude-3-5-haiku-20241022"
+                                target_model = llm_model if current_provider == llm_provider else "claude-opus-5"
                                 headers = {
                                     "x-api-key": current_key,
                                     "anthropic-version": "2023-06-01",

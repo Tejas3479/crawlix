@@ -231,8 +231,8 @@ async def resource_limits_middleware(request: Request, call_next):
 
 # ALLOWED LLM MODELS ALLOWLIST
 ALLOWED_LLM_MODELS = {
-    "gpt-4o", "gpt-4o-mini", "gpt-4-turbo", "gpt-3.5-turbo", "o1", "o1-mini", "o3-mini",
-    "claude-3-5-sonnet-20241022", "claude-3-5-haiku-20241022", "claude-3-opus-20240229",
+    "gpt-5.6-sol", "gpt-5.6-terra", "gpt-5.6-luna", "gpt-4o", "gpt-4o-mini", "o4-mini", "o3-pro", "o3-mini",
+    "claude-fable-5", "claude-opus-5", "claude-sonnet-5", "claude-3-5-sonnet-20241022",
     "gemini-3.6-flash", "gemini-3.5-flash-lite", "gemini-3.1-pro"
 }
 
