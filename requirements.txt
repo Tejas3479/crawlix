@@ -13,3 +13,8 @@ sqlmodel==0.0.18
 aiosqlite==0.20.0
 fakeredis==2.23.2
 arq==0.26.1
+croniter>=2.0.0
+openai>=1.0.0
+pinecone-client>=3.0.0
+weaviate-client>=4.0.0
+supabase>=2.0.0
