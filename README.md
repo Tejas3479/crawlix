@@ -149,12 +149,22 @@ curl -X POST http://localhost:8000/fetch \
 flowchart TD
     subgraph Client["Client Layer"]
         UI["Web Dashboard (Vanilla JS)"]
-        API_CLIENT["API Clients (cURL, Python, JS)"]
+        API_CLIENT["API Clients (cURL, Python, Node.js)"]
     end
 
     subgraph Server["FastAPI Application (app.py)"]
         AUTH["API Key Auth & CORS"]
-        ROUTES["Endpoints (/fetch, /crawl, /api/sessions)"]
+        ROUTES["Endpoints (/fetch, /crawl, /api/*)"]
+    end
+    
+    subgraph Storage["State & Persistence"]
+        DB[("SQLite Database<br/><i>Jobs, API Keys, Proxies</i>")]
+        REDIS[("Redis<br/><i>ARQ Queue & PubSub</i>")]
+    end
+
+    subgraph Background["ARQ Worker (worker.py)"]
+        CRON["Cron Scheduler"]
+        BATCH["Batch/Crawl Processor"]
     end
 
     subgraph Engine["Fetch Engine (fetcher.py)"]
@@ -162,22 +172,34 @@ flowchart TD
         ROUTER{"Execution Path"}
         PW["Playwright (Chromium)<br/><i>JS Rendering & Actions</i>"]
         CURL["curl-cffi<br/><i>TLS Impersonation</i>"]
+        CAPTCHA["Captcha Solver<br/><i>2Captcha / CapSolver</i>"]
         PROCESS["Content Processing<br/><i>Markdown & CSS Filtering</i>"]
         LLM["AI Extraction<br/><i>OpenAI / Anthropic / Gemini</i>"]
+        VECTOR["Vector DB Pipeline<br/><i>Pinecone / Weaviate / Supabase</i>"]
     end
 
     UI -->|REST API| ROUTES
     API_CLIENT -->|x-api-key| AUTH
+    AUTH -->|Validate via ENV or DB| DB
     AUTH --> ROUTES
+    ROUTES -->|State Sync| DB
+    ROUTES -->|Queue Job| REDIS
+    REDIS -->|Process Task| BATCH
+    CRON -->|Trigger Scheduled| REDIS
     ROUTES --> SSRF
+    BATCH --> SSRF
     SSRF --> ROUTER
     ROUTER -->|render_js: true| PW
     ROUTER -->|render_js: false| CURL
+    PW -->|Bypass Anti-Bot| CAPTCHA
+    CAPTCHA --> PW
     PW --> PROCESS
     CURL --> PROCESS
     PROCESS -->|Optional LLM| LLM
+    LLM --> VECTOR
     LLM --> ROUTES
     PROCESS --> ROUTES
+    VECTOR --> BATCH
 ```
 
 ### Request Lifecycle
@@ -187,28 +209,32 @@ sequenceDiagram
     autonumber
     actor Client
     participant API as FastAPI (app.py)
-    participant Guard as SSRF Guard
+    participant Worker as ARQ Worker
     participant Engine as Fetch Engine
-    participant LLM as AI Provider
+    participant DB as SQLite & Redis
+    participant AI as AI & Vector DBs
 
-    Client->>API: POST /fetch
-    API->>Guard: Async DNS Check
-    alt Restricted IP
-        Guard-->>API: Blocked
-        API-->>Client: 403 Forbidden
-    else Valid Public IP
-        Guard->>Engine: Execute Fetch
-        alt render_js: true
-            Engine->>Engine: Render page via Playwright
-        else render_js: false
-            Engine->>Engine: Fetch via curl-cffi
-        end
-        opt AI Extraction
-            Engine->>LLM: Send content + prompt
-            LLM-->>Engine: Structured JSON
-        end
-        Engine-->>API: Content + Timing Breakdown
-        API-->>Client: 200 OK (FetchResponse)
+    Client->>API: POST /crawl (Batch Job)
+    API->>DB: Save Job State
+    API->>DB: Queue Task in Redis
+    API-->>Client: 202 Accepted (Job ID)
+    
+    Worker->>DB: Dequeue Task
+    Worker->>Engine: Execute Fetch (Playwright / curl-cffi)
+    
+    alt Anti-Bot Detected
+        Engine->>Engine: Trigger Captcha Solver
+    end
+    
+    opt AI Extraction & Vector Push
+        Engine->>AI: Send content + prompt
+        AI-->>Engine: Structured JSON (Embeddings)
+        Engine->>AI: Push to Pinecone/Weaviate/Supabase
+    end
+    
+    Worker->>DB: Update Job Results
+    opt Webhook Configured
+        Worker->>Client: POST Webhook Payload
     end
 ```
 
