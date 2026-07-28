@@ -13,6 +13,7 @@ client = TestClient(app)
 
 from database import init_db
 
+
 @pytest.fixture(autouse=True)
 async def setup_env():
     os.environ["API_KEYS"] = "test-key"
