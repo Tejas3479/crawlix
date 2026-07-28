@@ -30,6 +30,7 @@ from markdownify import markdownify
 from playwright.async_api import Browser, async_playwright
 from sqlalchemy import desc, select
 
+from captcha_solver import CaptchaDetector
 from database import CrawlJob, ProxyManager, async_session_maker
 
 # RESTRICTED IP NETWORKS & HOSTNAMES FOR ENHANCED SSRF PROTECTION
@@ -846,6 +847,14 @@ async def run_fetch(
                         last_status = status_code
                         final_url = page.url
                         _t_ttfb = _time.monotonic()  # DOM available
+                        
+                        # Captcha & Anti-Bot Solving hook
+                        try:
+                            solved = await CaptchaDetector.detect_and_solve(page)
+                            if solved:
+                                logger.info(f"Captcha challenge on {url} was successfully solved!")
+                        except Exception as cap_err:
+                            logger.warning(f"Captcha solving error for {url}: {cap_err}")
                         
                         # Custom Actions processor
                         if actions:
