@@ -210,8 +210,9 @@ sequenceDiagram
     actor Client
     participant API as FastAPI (app.py)
     participant Worker as ARQ Worker
-    participant Engine as Fetch Engine
     participant DB as SQLite & Redis
+    participant Guard as SSRF Guard
+    participant Engine as Fetch Engine
     participant AI as AI & Vector DBs
 
     Client->>API: POST /crawl (Batch Job)
@@ -220,21 +221,28 @@ sequenceDiagram
     API-->>Client: 202 Accepted (Job ID)
     
     Worker->>DB: Dequeue Task
-    Worker->>Engine: Execute Fetch (Playwright / curl-cffi)
+    Worker->>Guard: Async DNS Check
     
-    alt Anti-Bot Detected
-        Engine->>Engine: Trigger Captcha Solver
-    end
-    
-    opt AI Extraction & Vector Push
-        Engine->>AI: Send content + prompt
-        AI-->>Engine: Structured JSON (Embeddings)
-        Engine->>AI: Push to Pinecone/Weaviate/Supabase
-    end
-    
-    Worker->>DB: Update Job Results
-    opt Webhook Configured
-        Worker->>Client: POST Webhook Payload
+    alt Restricted IP
+        Guard-->>Worker: Blocked (Internal IP)
+        Worker->>DB: Mark Job Failed
+    else Valid Public IP
+        Guard->>Engine: Execute Fetch (Playwright / curl-cffi)
+        
+        alt Anti-Bot Detected
+            Engine->>Engine: Trigger Captcha Solver
+        end
+        
+        opt AI Extraction & Vector Push
+            Engine->>AI: Send content + prompt
+            AI-->>Engine: Structured JSON (Embeddings)
+            Engine->>AI: Push to Pinecone/Weaviate/Supabase
+        end
+        
+        Worker->>DB: Update Job Results
+        opt Webhook Configured
+            Worker->>Client: POST Webhook Payload
+        end
     end
 ```
 
