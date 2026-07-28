@@ -551,6 +551,7 @@ async def download_batch_results(batch_id: str):
 
 from database import Destination, ScheduledCrawl
 
+
 class DestinationCreate(BaseModel):
     name: str
     type: Literal["pinecone", "weaviate", "supabase"]

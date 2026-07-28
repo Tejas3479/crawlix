@@ -10,13 +10,21 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import httpx
-from arq.connections import RedisSettings
-from bs4 import BeautifulSoup
-
-from database import BatchJob, CrawlJob, ProxyManager, Destination, ScheduledCrawl, async_session_maker, init_db
-from sqlalchemy import select
-from arq.cron import cron
 import openai
+from arq.connections import RedisSettings
+from arq.cron import cron
+from bs4 import BeautifulSoup
+from sqlalchemy import select
+
+from database import (
+    BatchJob,
+    CrawlJob,
+    Destination,
+    ProxyManager,
+    ScheduledCrawl,
+    async_session_maker,
+    init_db,
+)
 from fetcher import extract_links, playwright_mgr, run_fetch
 
 logger = logging.getLogger("crawlix.worker")
@@ -124,7 +132,7 @@ async def process_destinations(results: list, destination_ids: list[str]):
                         }
                         vector = embeddings[i] if i < len(embeddings) and embeddings[i] else None
                         batch.add_data_object(properties, class_name, vector=vector)
-                logger.info(f"Pushed rows to Weaviate")
+                logger.info("Pushed rows to Weaviate")
                     
         except Exception as e:
             logger.error(f"Destination push failed for {dest.name}: {e}")
