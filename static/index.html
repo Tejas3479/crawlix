@@ -399,7 +399,11 @@
     <section class="section" id="session-panel" aria-label="Active Browser Sessions">
       <div class="section-header-row">
         <h2 class="section-title">Active sessions</h2>
-        <button id="session-refresh-btn" class="icon-btn" title="Refresh sessions" aria-label="Refresh active sessions list">↻ Refresh</button>
+        <div style="display: flex; gap: 8px;">
+          <button id="session-refresh-btn" class="icon-btn" title="Refresh sessions" aria-label="Refresh active sessions list">↻ Refresh</button>
+          <button id="session-export-csv-btn" class="icon-btn" title="Export to CSV" aria-label="Export Sessions CSV">⇩ CSV</button>
+          <button id="session-export-json-btn" class="icon-btn" title="Export to JSON" aria-label="Export Sessions JSON">⇩ JSON</button>
+        </div>
       </div>
       <div id="session-grid" class="session-grid" role="list" aria-label="Sessions list">
         <div class="empty-state">No active sessions</div>
@@ -432,7 +436,7 @@
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/prism.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/prism/1.29.0/components/prism-python.min.js"></script>
   <script src="https://cdnjs.cloudflare.com/ajax/libs/marked/12.0.0/marked.min.js"></script>
-  <script src="app.js"></script>
+  <script type="module" src="app.js"></script>
 </body>
 </html>
 
