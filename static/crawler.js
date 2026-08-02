@@ -6,6 +6,94 @@ import { isValidHttpUrl } from './editor.js';
 import { switchTab, renderTab } from './app.js';
 
 let activeCrawlPollInterval = null;
+let currentCrawlObj = null;
+let currentCrawlPage = 1;
+const CRAWL_PAGE_SIZE = 15;
+
+function renderCrawlResultsTable(page = 1) {
+  const tableBody = document.getElementById("crawl-results-table-body");
+  const paginationControls = document.getElementById("crawl-pagination-controls");
+  if (!tableBody || !currentCrawlObj) return;
+
+  const results = currentCrawlObj.results || [];
+  if (results.length === 0) {
+    tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-tertiary);">No pages scraped successfully yet</td></tr>';
+    if (paginationControls) paginationControls.style.display = "none";
+    return;
+  }
+
+  const totalPages = Math.ceil(results.length / CRAWL_PAGE_SIZE);
+  const p = Math.max(1, Math.min(page, totalPages));
+  currentCrawlPage = p;
+
+  const startIndex = (p - 1) * CRAWL_PAGE_SIZE;
+  const slice = results.slice(startIndex, startIndex + CRAWL_PAGE_SIZE);
+
+  tableBody.innerHTML = slice.map((r, sliceIdx) => {
+    const actualIndex = startIndex + sliceIdx;
+    return `
+      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); transition:background 0.15s ease;" class="crawl-result-row">
+        <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.url}">${r.url}</td>
+        <td style="padding: 10px 16px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="${r.title || '—'}">${r.title || '—'}</td>
+        <td style="padding: 10px 16px;">
+          <span class="status-pill ${r.status_code >= 200 && r.status_code < 300 ? 'status-2xx' : 'status-4xx'}" style="font-size:10px; padding:2px 8px;">
+            ${r.status_code || r.error || 'error'}
+          </span>
+        </td>
+        <td style="padding: 10px 16px;">
+          <button class="icon-btn view-scraped-btn" data-index="${actualIndex}" style="font-size:11px; padding:3px 8px;">View</button>
+        </td>
+      </tr>
+    `;
+  }).join("");
+
+  tableBody.querySelectorAll(".view-scraped-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+      const r = currentCrawlObj.results[parseInt(btn.dataset.index, 10)];
+      state.lastResponse = {
+        success: !r.error,
+        url: r.url,
+        status_code: r.status_code || 0,
+        output_format: currentCrawlObj.output_format || "markdown",
+        content: r.content,
+        session_id: null,
+        latency_ms: 0,
+        retries_used: 0,
+        error: r.error || null
+      };
+      state.lastRequest = {
+        url: r.url,
+        method: "GET",
+        render_js: currentCrawlObj.render_js,
+        output_format: currentCrawlObj.output_format
+      };
+      
+      document.getElementById("nav-builder").click();
+      document.getElementById("response-panel").classList.remove("hidden");
+      switchTab("preview");
+      showToast("Loaded page details in Request Builder", "info", 2000);
+    });
+  });
+
+  if (paginationControls) {
+    if (totalPages <= 1) {
+      paginationControls.style.display = "none";
+    } else {
+      paginationControls.style.display = "flex";
+      paginationControls.innerHTML = `
+        <div>Page <b>${p}</b> of <b>${totalPages}</b> (${results.length} total pages)</div>
+        <div style="display:flex; gap:8px;">
+          <button id="crawl-page-prev" class="icon-btn" style="padding:4px 10px; font-size:12px;" ${p === 1 ? "disabled" : ""}>◀ Prev</button>
+          <button id="crawl-page-next" class="icon-btn" style="padding:4px 10px; font-size:12px;" ${p === totalPages ? "disabled" : ""}>Next ▶</button>
+        </div>
+      `;
+      const prevBtn = document.getElementById("crawl-page-prev");
+      const nextBtn = document.getElementById("crawl-page-next");
+      if (prevBtn) prevBtn.addEventListener("click", () => renderCrawlResultsTable(p - 1));
+      if (nextBtn) nextBtn.addEventListener("click", () => renderCrawlResultsTable(p + 1));
+    }
+  }
+}
 
 export async function renderCrawls() {
   const grid = document.getElementById("crawl-history-grid");
@@ -34,22 +122,22 @@ export async function renderCrawls() {
       if (c.status === "running") statusClass = "engine-playwright";
       else if (c.status === "failed") statusClass = "status-offline";
       
-      return \`
-        <div class="session-card crawl-card" data-crawl-id="\${c.crawl_id}" style="cursor:pointer; border-color:\${c.status === 'running' ? 'var(--accent-color)' : 'rgba(255,255,255,0.08)'}; position: relative; padding:16px;">
-          <div class="card-session-id" style="font-size:10px; color:var(--text-secondary)">ID: \${c.crawl_id.slice(0, 8)}…</div>
-          <div class="crawl-card-url" style="font-size:13px; font-weight:500; margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right: 20px;" title="\${c.url}">\${c.url}</div>
-          <span class="engine-badge \${statusClass}" style="margin-bottom:8px;">\${c.status}</span>
+      return `
+        <div class="session-card crawl-card" data-crawl-id="${c.crawl_id}" style="cursor:pointer; border-color:${c.status === 'running' ? 'var(--accent-color)' : 'rgba(255,255,255,0.08)'}; position: relative; padding:16px;">
+          <div class="card-session-id" style="font-size:10px; color:var(--text-secondary)">ID: ${c.crawl_id.slice(0, 8)}…</div>
+          <div class="crawl-card-url" style="font-size:13px; font-weight:500; margin-bottom:8px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; padding-right: 20px;" title="${c.url}">${c.url}</div>
+          <span class="engine-badge ${statusClass}" style="margin-bottom:8px;">${c.status}</span>
           
           <div class="crawl-progress-container" style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px; overflow:hidden; margin-top:8px; margin-bottom:4px;">
-            <div class="crawl-progress-bar" style="width:\${pct}%; height:100%; background:var(--accent-color); transition:width 0.3s ease;"></div>
+            <div class="crawl-progress-bar" style="width:${pct}%; height:100%; background:var(--accent-color); transition:width 0.3s ease;"></div>
           </div>
           <div class="card-meta" style="display:flex; justify-content:space-between; margin-top:4px;">
-            <span>Pages: \${pagesCrawled} / \${c.max_pages}</span>
-            <span>\${timeAgo(c.created_at)}</span>
+            <span>Pages: ${pagesCrawled} / ${c.max_pages}</span>
+            <span>${timeAgo(c.created_at)}</span>
           </div>
-          <button class="delete-crawl-btn" data-crawl-id="\${c.crawl_id}" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--text-tertiary); cursor:pointer; font-size:14px;">✕</button>
+          <button class="delete-crawl-btn" data-crawl-id="${c.crawl_id}" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--text-tertiary); cursor:pointer; font-size:14px;">✕</button>
         </div>
-      \`;
+      `;
     }).join("");
 
     grid.querySelectorAll(".crawl-card").forEach(card => {
@@ -67,7 +155,7 @@ export async function renderCrawls() {
         try {
           const headers = {};
           if (state.apiKey) headers["x-api-key"] = state.apiKey;
-          const res = await fetch(\`/api/crawl/\${cid}\`, { method: "DELETE", headers });
+          const res = await fetch(`/api/crawl/${cid}`, { method: "DELETE", headers });
           if (res.ok) {
             showToast("Crawl deleted", "success", 2000);
             renderCrawls();
@@ -109,6 +197,8 @@ export async function startCrawlJob() {
   const startBtn = document.getElementById("crawl-start-btn");
   startBtn.disabled = true;
   startBtn.textContent = "Starting…";
+  startBtn.setAttribute("aria-busy", "true");
+  document.getElementById("crawler-section")?.setAttribute("aria-busy", "true");
 
   // Parse destinations
   let destinations = [];
@@ -158,6 +248,8 @@ export async function startCrawlJob() {
   } finally {
     startBtn.disabled = false;
     startBtn.textContent = "Start Crawl";
+    startBtn.setAttribute("aria-busy", "false");
+    document.getElementById("crawler-section")?.setAttribute("aria-busy", "false");
   }
 }
 
@@ -192,8 +284,9 @@ export async function viewCrawlDetails(crawlId, silent = false) {
   detailsView.dataset.currentCrawlId = crawlId;
   if (!silent) {
     detailsView.classList.remove("hidden");
+    detailsView.setAttribute("aria-busy", "true");
     titleEl.textContent = "Loading crawl results…";
-    tableBody.innerHTML = \`
+    tableBody.innerHTML = `
       <tr>
         <td colspan="4">
           <div class="loading-state-container">
@@ -201,33 +294,34 @@ export async function viewCrawlDetails(crawlId, silent = false) {
             <span>Fetching crawl results...</span>
           </div>
         </td>
-      </tr>\`;
+      </tr>`;
   }
 
   const renderErrorState = (msg) => {
+    detailsView.setAttribute("aria-busy", "false");
     titleEl.textContent = "Error loading results";
-    tableBody.innerHTML = \`
+    tableBody.innerHTML = `
       <tr>
         <td colspan="4">
           <div class="error-state-container">
-            <span>⚠️ \${escapeHtml(msg)}</span>
-            <button class="error-retry-btn" onclick="viewCrawlDetails('\${crawlId}')">🔄 Retry</button>
+            <span>⚠️ ${escapeHtml(msg)}</span>
+            <button class="error-retry-btn" onclick="viewCrawlDetails('${crawlId}')">🔄 Retry</button>
           </div>
         </td>
-      </tr>\`;
+      </tr>`;
   };
 
   try {
     const headers = {};
     if (state.apiKey) headers["x-api-key"] = state.apiKey;
-    const res = await fetch(\`/api/crawl/\${crawlId}\`, { headers });
+    const res = await fetch(`/api/crawl/${crawlId}`, { headers });
     if (!res.ok) {
-      renderErrorState(\`Failed to load crawl results (HTTP \${res.status})\`);
+      renderErrorState(`Failed to load crawl results (HTTP ${res.status})`);
       return;
     }
     const crawl = await res.json();
     const pagesCrawled = crawl.stats?.pages_crawled ?? 0;
-    titleEl.textContent = \`Crawl Results: \${crawl.url} (\${pagesCrawled} pages)\`;
+    titleEl.textContent = `Crawl Results: ${crawl.url} (${pagesCrawled} pages)`;
     detailsView.dataset.crawlData = JSON.stringify(crawl);
 
     const totalPages = crawl.results.length;
@@ -241,73 +335,30 @@ export async function viewCrawlDetails(crawlId, silent = false) {
     });
 
     const successRate = totalPages > 0 ? Math.round((successfulPages / totalPages) * 100) : 0;
-    const statusCodeStr = Object.entries(statusCounts).map(([code, count]) => \`\${code}: \${count}\`).join(", ");
+    const statusCodeStr = Object.entries(statusCounts).map(([code, count]) => `${code}: ${count}`).join(", ");
 
     const successRateEl = document.getElementById("stat-success-rate");
     const pagesScrapedEl = document.getElementById("stat-pages-scraped");
     const statusCodesEl = document.getElementById("stat-status-codes");
 
     if (successRateEl) {
-      successRateEl.textContent = \`\${successRate}%\`;
+      successRateEl.textContent = `${successRate}%`;
       successRateEl.style.color = successRate > 80 ? "var(--success-color)" : (successRate > 50 ? "var(--warning-color)" : "var(--danger-color)");
     }
     if (pagesScrapedEl) {
       const pagesCrawled = crawl.stats?.pages_crawled ?? 0;
-      pagesScrapedEl.textContent = \`\${pagesCrawled} / \${crawl.max_pages}\`;
+      pagesScrapedEl.textContent = `${pagesCrawled} / ${crawl.max_pages}`;
     }
     if (statusCodesEl) {
       statusCodesEl.textContent = statusCodeStr || "—";
       statusCodesEl.title = statusCodeStr;
     }
 
-    if (crawl.results.length === 0) {
-      tableBody.innerHTML = '<tr><td colspan="4" style="text-align:center; padding:20px; color:var(--text-tertiary);">No pages scraped successfully yet</td></tr>';
-      return;
-    }
-
-    tableBody.innerHTML = crawl.results.map((r, idx) => \`
-      <tr style="border-bottom: 1px solid rgba(255,255,255,0.06); transition:background 0.15s ease;" class="crawl-result-row">
-        <td style="padding: 10px 16px; font-family: monospace; font-size: 11px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="\${r.url}">\${r.url}</td>
-        <td style="padding: 10px 16px; max-width: 250px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;" title="\${r.title || '—'}">\${r.title || '—'}</td>
-        <td style="padding: 10px 16px;">
-          <span class="status-pill \${r.status_code >= 200 && r.status_code < 300 ? 'status-2xx' : 'status-4xx'}" style="font-size:10px; padding:2px 8px;">
-            \${r.status_code || r.error || 'error'}
-          </span>
-        </td>
-        <td style="padding: 10px 16px;">
-          <button class="icon-btn view-scraped-btn" data-index="\${idx}" style="font-size:11px; padding:3px 8px;">View</button>
-        </td>
-      </tr>
-    \`).join("");
-
-    tableBody.querySelectorAll(".view-scraped-btn").forEach(btn => {
-      btn.addEventListener("click", () => {
-        const r = crawl.results[parseInt(btn.dataset.index, 10)];
-        state.lastResponse = {
-          success: !r.error,
-          url: r.url,
-          status_code: r.status_code || 0,
-          output_format: crawl.output_format || "markdown",
-          content: r.content,
-          session_id: null,
-          latency_ms: 0,
-          retries_used: 0,
-          error: r.error || null
-        };
-        state.lastRequest = {
-          url: r.url,
-          method: "GET",
-          render_js: crawl.render_js,
-          output_format: crawl.output_format
-        };
-        
-        document.getElementById("nav-builder").click();
-        document.getElementById("response-panel").classList.remove("hidden");
-        switchTab("preview");
-        showToast("Loaded page details in Request Builder", "info", 2000);
-      });
-    });
+    currentCrawlObj = crawl;
+    detailsView.setAttribute("aria-busy", "false");
+    renderCrawlResultsTable(1);
   } catch (err) {
+    detailsView.setAttribute("aria-busy", "false");
     renderErrorState(err.message || "Network error loading crawl results");
   }
 }
@@ -326,7 +377,7 @@ export function setupCrawlDownload() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = \`crawl-results-\${crawl.crawl_id.slice(0, 8)}.json\`;
+    a.download = `crawl-results-${crawl.crawl_id.slice(0, 8)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -345,21 +396,21 @@ export function setupCrawlCsvDownload() {
     if (!rawData) return;
     const crawl = JSON.parse(rawData);
 
-    let csvContent = "URL,Title,Status Code,Error,Error Message\\n";
+    let csvContent = "URL,Title,Status Code,Error,Error Message\n";
     crawl.results.forEach(r => {
-      const url = \`"\${(r.url || "").replace(/"/g, '""')}"\`;
-      const title = \`"\${(r.title || "").replace(/"/g, '""')}"\`;
+      const url = `"${(r.url || "").replace(/"/g, '""')}"`;
+      const title = `"${(r.title || "").replace(/"/g, '""')}"`;
       const status = r.status_code || "";
       const error = r.error || "";
-      const errMsg = \`"\${(r.error_message || "").replace(/"/g, '""')}"\`;
-      csvContent += \`\${url},\${title},\${status},\${error},\${errMsg}\\n\`;
+      const errMsg = `"${(r.error_message || "").replace(/"/g, '""')}"`;
+      csvContent += `${url},${title},${status},${error},${errMsg}\n`;
     });
 
     const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = \`crawl-results-\${crawl.crawl_id.slice(0, 8)}.csv\`;
+    a.download = `crawl-results-${crawl.crawl_id.slice(0, 8)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -393,6 +444,7 @@ export function setupCrawlScheduling() {
     
     confirmBtn.disabled = true;
     confirmBtn.textContent = "Scheduling...";
+    confirmBtn.setAttribute("aria-busy", "true");
     
     // Construct the payload exactly as startCrawlJob does
     const crawlUrlInput = document.getElementById("crawl-url-input");
@@ -451,6 +503,7 @@ export function setupCrawlScheduling() {
     } finally {
       confirmBtn.disabled = false;
       confirmBtn.textContent = "Schedule";
+      confirmBtn.setAttribute("aria-busy", "false");
     }
   });
 }

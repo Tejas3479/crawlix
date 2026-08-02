@@ -169,126 +169,132 @@ export function initAdmin() {
 }
 
 export async function renderAdmin() {
-  const headers = {};
-  if (state.apiKey) headers["x-api-key"] = state.apiKey;
+  const adminSec = document.getElementById("admin-section");
+  adminSec?.setAttribute("aria-busy", "true");
+  try {
+    const headers = {};
+    if (state.apiKey) headers["x-api-key"] = state.apiKey;
 
-  // Load Destinations
-  const destList = document.getElementById("admin-dest-list");
-  if (destList) {
-    try {
-      const res = await fetch("/api/destinations", { headers });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || res.statusText);
-      }
-      const list = await res.json();
-      if (!list || list.length === 0) {
-        destList.innerHTML = '<div class="empty-state">No destinations configured</div>';
-      } else {
-        destList.innerHTML = list.map(d => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
-            <div>
-              <b style="color:var(--text-primary); font-size:13px;">${escapeHtml(d.name)}</b>
-              <span style="color:var(--accent); font-size:11px; margin-left:6px;">(${escapeHtml(d.type)})</span>
+    // Load Destinations
+    const destList = document.getElementById("admin-dest-list");
+    if (destList) {
+      try {
+        const res = await fetch("/api/destinations", { headers });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || res.statusText);
+        }
+        const list = await res.json();
+        if (!list || list.length === 0) {
+          destList.innerHTML = '<div class="empty-state">No destinations configured</div>';
+        } else {
+          destList.innerHTML = list.map(d => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
+              <div>
+                <b style="color:var(--text-primary); font-size:13px;">${escapeHtml(d.name)}</b>
+                <span style="color:var(--accent); font-size:11px; margin-left:6px;">(${escapeHtml(d.type)})</span>
+              </div>
+              <button class="delete-dest-btn icon-btn" data-id="${d.id}" style="color:#ef4444;" title="Delete">✕</button>
             </div>
-            <button class="delete-dest-btn icon-btn" data-id="${d.id}" style="color:#ef4444;" title="Delete">✕</button>
-          </div>
-        `).join("");
+          `).join("");
 
-        destList.querySelectorAll(".delete-dest-btn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            try {
-              const resDel = await fetch(`/api/destinations/${btn.dataset.id}`, { method: "DELETE", headers });
-              if (!resDel.ok) {
-                const err = await resDel.json().catch(() => ({}));
-                throw new Error(err.detail || resDel.statusText);
+          destList.querySelectorAll(".delete-dest-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              try {
+                const resDel = await fetch(`/api/destinations/${btn.dataset.id}`, { method: "DELETE", headers });
+                if (!resDel.ok) {
+                  const err = await resDel.json().catch(() => ({}));
+                  throw new Error(err.detail || resDel.statusText);
+                }
+                showToast("Destination deleted", "success");
+                renderAdmin();
+              } catch (err) {
+                showToast("Error deleting destination: " + err.message, "error");
               }
-              showToast("Destination deleted", "success");
-              renderAdmin();
-            } catch (err) {
-              showToast("Error deleting destination: " + err.message, "error");
-            }
+            });
           });
-        });
+        }
+      } catch (err) {
+        destList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
+        showToast("Failed to load destinations: " + err.message, "error");
       }
-    } catch (err) {
-      destList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
-      showToast("Failed to load destinations: " + err.message, "error");
     }
-  }
 
-  // Load Schedules
-  const schedList = document.getElementById("admin-sched-list");
-  if (schedList) {
-    try {
-      const res = await fetch("/api/schedule", { headers });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || res.statusText);
-      }
-      const list = await res.json();
-      if (!list || list.length === 0) {
-        schedList.innerHTML = '<div class="empty-state">No schedules configured</div>';
-      } else {
-        schedList.innerHTML = list.map(s => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
-            <div>
-              <b style="color:var(--text-primary); font-size:13px;">${escapeHtml((s.payload && s.payload.url) || 'Schedule')}</b>
-              <span style="color:var(--accent); font-size:11px; margin-left:6px;">[${escapeHtml(s.cron_expression)}]</span>
+    // Load Schedules
+    const schedList = document.getElementById("admin-sched-list");
+    if (schedList) {
+      try {
+        const res = await fetch("/api/schedule", { headers });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || res.statusText);
+        }
+        const list = await res.json();
+        if (!list || list.length === 0) {
+          schedList.innerHTML = '<div class="empty-state">No schedules configured</div>';
+        } else {
+          schedList.innerHTML = list.map(s => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
+              <div>
+                <b style="color:var(--text-primary); font-size:13px;">${escapeHtml((s.payload && s.payload.url) || 'Schedule')}</b>
+                <span style="color:var(--accent); font-size:11px; margin-left:6px;">[${escapeHtml(s.cron_expression)}]</span>
+              </div>
+              <button class="delete-sched-btn icon-btn" data-id="${s.id}" style="color:#ef4444;" title="Delete">✕</button>
             </div>
-            <button class="delete-sched-btn icon-btn" data-id="${s.id}" style="color:#ef4444;" title="Delete">✕</button>
-          </div>
-        `).join("");
+          `).join("");
 
-        schedList.querySelectorAll(".delete-sched-btn").forEach(btn => {
-          btn.addEventListener("click", async () => {
-            try {
-              const resDel = await fetch(`/api/schedule/${btn.dataset.id}`, { method: "DELETE", headers });
-              if (!resDel.ok) {
-                const err = await resDel.json().catch(() => ({}));
-                throw new Error(err.detail || resDel.statusText);
+          schedList.querySelectorAll(".delete-sched-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              try {
+                const resDel = await fetch(`/api/schedule/${btn.dataset.id}`, { method: "DELETE", headers });
+                if (!resDel.ok) {
+                  const err = await resDel.json().catch(() => ({}));
+                  throw new Error(err.detail || resDel.statusText);
+                }
+                showToast("Schedule deleted", "success");
+                renderAdmin();
+              } catch (err) {
+                showToast("Error deleting schedule: " + err.message, "error");
               }
-              showToast("Schedule deleted", "success");
-              renderAdmin();
-            } catch (err) {
-              showToast("Error deleting schedule: " + err.message, "error");
-            }
+            });
           });
-        });
+        }
+      } catch (err) {
+        schedList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
+        showToast("Failed to load schedules: " + err.message, "error");
       }
-    } catch (err) {
-      schedList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
-      showToast("Failed to load schedules: " + err.message, "error");
     }
-  }
 
-  // Load Proxies
-  const proxyList = document.getElementById("admin-proxy-list");
-  if (proxyList) {
-    try {
-      const res = await fetch("/api/proxies", { headers });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.detail || res.statusText);
-      }
-      const list = await res.json();
-      if (!list || list.length === 0) {
-        proxyList.innerHTML = '<div class="empty-state">No proxies configured</div>';
-      } else {
-        proxyList.innerHTML = list.map(p => `
-          <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
-            <div>
-              <span style="color:var(--text-primary); font-size:13px;">${escapeHtml(p.url)}</span>
-              <span style="color:${p.is_active ? '#22c55e' : '#ef4444'}; font-size:11px; margin-left:6px;">
-                ${p.is_active ? 'Active' : 'Inactive'} (Fails: ${p.fail_count})
-              </span>
+    // Load Proxies
+    const proxyList = document.getElementById("admin-proxy-list");
+    if (proxyList) {
+      try {
+        const res = await fetch("/api/proxies", { headers });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          throw new Error(err.detail || res.statusText);
+        }
+        const list = await res.json();
+        if (!list || list.length === 0) {
+          proxyList.innerHTML = '<div class="empty-state">No proxies configured</div>';
+        } else {
+          proxyList.innerHTML = list.map(p => `
+            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
+              <div>
+                <span style="color:var(--text-primary); font-size:13px;">${escapeHtml(p.url)}</span>
+                <span style="color:${p.is_active ? '#22c55e' : '#ef4444'}; font-size:11px; margin-left:6px;">
+                  ${p.is_active ? 'Active' : 'Inactive'} (Fails: ${p.fail_count})
+                </span>
+              </div>
             </div>
-          </div>
-        `).join("");
+          `).join("");
+        }
+      } catch (err) {
+        proxyList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
+        showToast("Failed to load proxies: " + err.message, "error");
       }
-    } catch (err) {
-      proxyList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
-      showToast("Failed to load proxies: " + err.message, "error");
     }
+  } finally {
+    adminSec?.setAttribute("aria-busy", "false");
   }
 }

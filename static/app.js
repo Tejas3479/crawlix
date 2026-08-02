@@ -611,6 +611,8 @@ document.addEventListener("DOMContentLoaded", () => {
       sendBtn.disabled = true;
       sendBtn.classList.add("loading");
       sendBtn.textContent = "Fetching…";
+      sendBtn.setAttribute("aria-busy", "true");
+      document.getElementById("response-panel")?.setAttribute("aria-busy", "true");
 
       const reqBody = {
         url: urlVal,
@@ -665,6 +667,8 @@ document.addEventListener("DOMContentLoaded", () => {
         sendBtn.disabled = false;
         sendBtn.classList.remove("loading");
         sendBtn.textContent = "Send request";
+        sendBtn.setAttribute("aria-busy", "false");
+        document.getElementById("response-panel")?.setAttribute("aria-busy", "false");
       }
     });
   }
