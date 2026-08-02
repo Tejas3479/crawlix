@@ -154,7 +154,7 @@ Actions are executed in order before content is extracted. Each action is an obj
 
 ---
 
-## POST /crawl
+## POST /api/crawl
 
 Start an asynchronous site crawl. Returns a `crawl_id` to poll for results.
 
@@ -208,7 +208,7 @@ sequenceDiagram
     participant Worker as Async Worker Pool
     participant Web as Target Website
 
-    Client->>API: POST /crawl (start_url, max_pages, max_depth)
+    Client->>API: POST /api/crawl (start_url, max_pages, max_depth)
     API->>CM: Create Crawl Job & Spawn Background Task
     CM-->>API: Return crawl_id
     API-->>Client: 200 OK (crawl_id, status: "running")
@@ -224,7 +224,7 @@ sequenceDiagram
     end
 
     loop Polling Status
-        Client->>API: GET /crawl/{crawl_id}
+        Client->>API: GET /api/crawl/{crawl_id}
         API->>CM: Query Job Status
         CM-->>API: Job State & Pages List
         API-->>Client: Status JSON (running / completed)
@@ -233,7 +233,7 @@ sequenceDiagram
 
 ---
 
-## GET /crawl/{crawl_id}
+## GET /api/crawl/{crawl_id}
 
 Poll the status and results of a running or completed crawl.
 
@@ -296,7 +296,7 @@ Destroy a browser session and release its resources.
 
 ---
 
-## GET /health
+## GET /api/health
 
 Health check — no authentication required.
 
@@ -305,6 +305,26 @@ Health check — no authentication required.
 ```json
 { "status": "ok" }
 ```
+
+---
+
+## Other Routes
+
+| Method | Route | Description |
+|--------|-------|-------------|
+| `GET` | `/api/crawl` | List all crawl jobs |
+| `DELETE` | `/api/crawl/{crawl_id}` | Delete a crawl job |
+| `POST` | `/api/crawl/batch` | Start a batch crawl job |
+| `GET` | `/api/crawl/batch/{batch_id}` | Poll batch crawl status |
+| `GET` | `/api/crawl/batch/{batch_id}/download` | Download batch results (CSV/JSON) |
+| `POST` | `/api/destinations` | Create a webhook destination |
+| `GET` | `/api/destinations` | List all destinations |
+| `DELETE` | `/api/destinations/{dest_id}` | Delete a destination |
+| `POST` | `/api/schedule` | Schedule a recurring crawl |
+| `GET` | `/api/schedule` | List all schedules |
+| `DELETE` | `/api/schedule/{sched_id}` | Delete a schedule |
+| `POST` | `/api/proxies` | Upload or set a proxy list |
+| `GET` | `/api/proxies` | Retrieve the active proxy list |
 
 ---
 

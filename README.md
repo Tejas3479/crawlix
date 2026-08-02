@@ -122,11 +122,12 @@ See [docs/API.md](docs/API.md) for full request/response schemas.
 | Method | Endpoint | Description |
 |--------|----------|-------------|
 | `POST` | `/fetch` | Fetch a URL (curl or Playwright) |
-| `POST` | `/crawl` | Start a recursive site crawl |
-| `GET` | `/crawl/{id}` | Get crawl job status & results |
+| `POST` | `/api/crawl` | Start a recursive site crawl |
+| `GET` | `/api/crawl/{id}` | Get crawl job status & results |
+| `POST` | `/api/crawl/batch` | Start a batch crawl job |
 | `GET` | `/api/sessions` | List active browser sessions |
-| `DELETE` | `/api/sessions/{id}` | Destroy a session |
-| `GET` | `/health` | Health check (no auth required) |
+| `DELETE` | `/api/sessions/{id}` | Destroy a browser session |
+| `GET` | `/api/health` | Health check (no auth required) |
 
 ### Quick example
 
@@ -153,8 +154,9 @@ flowchart TD
     end
 
     subgraph Server["FastAPI Application (app.py)"]
-        AUTH["API Key Auth & CORS"]
-        ROUTES["Endpoints (/fetch, /crawl, /api/*)"]
+        FASTAPI("FastAPI (Main App)")
+        ROUTES("Endpoints (/fetch, /api/*)")
+        AUTH("API Key Auth")
     end
     
     subgraph Storage["State & Persistence"]
@@ -215,7 +217,7 @@ sequenceDiagram
     participant Engine as Fetch Engine
     participant AI as AI & Vector DBs
 
-    Client->>API: POST /crawl (Batch Job)
+    Client->>API: POST /api/crawl (Batch Job)
     API->>DB: Save Job State
     API->>DB: Queue Task in Redis
     API-->>Client: 202 Accepted (Job ID)
