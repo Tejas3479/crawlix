@@ -1,6 +1,6 @@
 import os
+
 os.environ['AUTH_DISABLED'] = 'true'
-import os
 
 import httpx
 import pytest
