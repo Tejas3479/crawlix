@@ -207,7 +207,8 @@ class CaptchaDetector:
                 token = await solver.solve_recaptcha(page, sitekey, url)
                 if token:
                     await page.evaluate(
-                        f'document.getElementById("g-recaptcha-response").innerHTML="{token}";'
+                        '(token) => document.getElementById("g-recaptcha-response").innerHTML = token',
+                        token
                     )
                     return True
 
@@ -224,7 +225,8 @@ class CaptchaDetector:
                 token = await solver.solve_hcaptcha(page, sitekey, url)
                 if token:
                     await page.evaluate(
-                        f'document.getElementsByName("h-captcha-response")[0].value="{token}";'
+                        '(token) => document.getElementsByName("h-captcha-response")[0].value = token',
+                        token
                     )
                     return True
 
@@ -237,7 +239,8 @@ class CaptchaDetector:
                 token = await solver.solve_turnstile(page, sitekey, url)
                 if token:
                     await page.evaluate(
-                        f'document.getElementsByName("cf-turnstile-response")[0].value="{token}";'
+                        '(token) => document.getElementsByName("cf-turnstile-response")[0].value = token',
+                        token
                     )
                     return True
 

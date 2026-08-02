@@ -24,7 +24,7 @@ from database import (
     async_session_maker,
     init_db,
 )
-from fetcher import playwright_mgr, run_fetch
+from fetcher import is_ssrf_safe, playwright_mgr, run_fetch
 
 logger = logging.getLogger("crawlix.worker")
 
@@ -41,7 +41,11 @@ async def notify_webhook(webhook_url: str, payload: dict):
     if not webhook_url:
         return
     try:
-        async with httpx.AsyncClient(timeout=15.0) as client:
+        if not await is_ssrf_safe(webhook_url):
+            logger.error(f"Webhook URL blocked by SSRF protection: {webhook_url}")
+            return
+            
+        async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
             resp = await client.post(webhook_url, json=payload)
             logger.info(f"Webhook notification sent to {webhook_url}, status: {resp.status_code}")
     except Exception as e:

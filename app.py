@@ -175,7 +175,13 @@ async def lifespan(app: FastAPI):
     logger.info("Crawlix application shutdown complete.")
 
 # APP INIT
-app = FastAPI(title="Crawlix", version="1.0.0", lifespan=lifespan)
+app_kwargs = {"title": "Crawlix", "version": "1.0.0", "lifespan": lifespan}
+if os.getenv("ENV", "development") == "production":
+    app_kwargs["docs_url"] = None
+    app_kwargs["redoc_url"] = None
+    app_kwargs["openapi_url"] = None
+
+app = FastAPI(**app_kwargs)
 
 app.add_middleware(
     CORSMiddleware,
