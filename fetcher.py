@@ -14,16 +14,15 @@ import re
 import socket
 import time
 from contextlib import asynccontextmanager
-import urllib.parse
 from datetime import datetime as dt_class
 from datetime import timezone
-from fastapi import HTTPException
 from urllib.parse import urljoin, urlparse
 
 import httpx
 import redis.asyncio as redis
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession as CurlSession
+from fastapi import HTTPException
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
 redis_client = redis.from_url(REDIS_URL, decode_responses=True)
@@ -846,7 +845,7 @@ async def run_fetch(
                     if resp.status_code in (301, 302, 303, 307, 308) and "Location" in resp.headers:
                         next_url = urljoin(current_url, resp.headers["Location"])
                         if not await is_ssrf_safe(next_url):
-                            raise Exception("SSRF restricted address detected in redirect hop")
+                            raise ValueError("SSRF restricted address detected in redirect hop")
                         current_url = next_url
                         redirects += 1
                     else:
@@ -869,10 +868,9 @@ async def run_fetch(
                 async with playwright_mgr.acquire_context(current_proxy, headers, stealth=stealth) as context:
                     async def route_interceptor(route):
                         req_url = route.request.url
-                        if route.request.resource_type == "document":
-                            if not await is_ssrf_safe(req_url):
-                                await route.abort("blockedbyclient")
-                                return
+                        if route.request.resource_type == "document" and not await is_ssrf_safe(req_url):
+                            await route.abort("blockedbyclient")
+                            return
                         await route.continue_()
                         
                     await context.route("**/*", route_interceptor)

@@ -13,7 +13,6 @@ import httpx
 import openai
 from arq.connections import RedisSettings
 from arq.cron import cron
-from bs4 import BeautifulSoup
 from sqlalchemy import select
 
 from database import (
@@ -25,7 +24,7 @@ from database import (
     async_session_maker,
     init_db,
 )
-from fetcher import extract_links, playwright_mgr, run_fetch
+from fetcher import playwright_mgr, run_fetch
 
 logger = logging.getLogger("crawlix.worker")
 
