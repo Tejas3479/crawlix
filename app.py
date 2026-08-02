@@ -8,32 +8,19 @@ if sys.platform == "win32":
 import logging
 import time
 from contextlib import asynccontextmanager
+
 import redis.asyncio as redis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
-from auth import VALID_KEYS, security_bearer, security_header, verify_api_key
 from database import init_db
 from fetcher import (
     SensitiveDataFilter,
     crawl_manager,
     playwright_mgr,
     session_manager,
-)
-from models import (
-    ALLOWED_LLM_MODELS,
-    MAX_SERVER_CRAWL_DEPTH,
-    MAX_SERVER_CRAWL_PAGES,
-    ActionConfig,
-    CrawlRequest,
-    DestinationCreate,
-    FetchRequest,
-    FetchResponse,
-    ProxyConfig,
-    ProxyCreate,
-    ScheduleCreate,
 )
 from routers import admin_router, crawl_router, fetch_router, health_router
 
