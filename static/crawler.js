@@ -449,3 +449,5 @@ export function setupCrawlScheduling() {
     }
   });
 }
+
+window.viewCrawlDetails = viewCrawlDetails;

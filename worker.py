@@ -221,158 +221,28 @@ async def run_crawl_task(
     stealth: bool = False,
     webhook_url: str | None = None
 ):
+    from fetcher import crawl_manager
     logger.info(f"ARQ Worker starting crawl job {crawl_id} for URL {seed_url}")
     await init_db()
 
-    queue: list[tuple[str, int]] = [(seed_url, 0)]
-    visited: set[str] = set()
-    crawled_count = 0
-    base_domain = urlparse(seed_url).netloc
-
-    CONCURRENCY = 3
-    semaphore = asyncio.Semaphore(CONCURRENCY)
-    lock = asyncio.Lock()
-    active_tasks: set[asyncio.Task] = set()
-
-    async def update_job_state(results: list, count: int, status: str | None = None, error_msg: str | None = None):
-        async with async_session_maker() as session:
-            job = await session.get(CrawlJob, crawl_id)
-            if not job:
-                return
-            new_results = list(job.results) if job.results else []
-            new_results.extend(results)
-            job.results = new_results
-
-            new_stats = dict(job.stats) if job.stats else {}
-            new_stats["pages_crawled"] = count
-            job.stats = new_stats
-
-            if status:
-                job.status = status
-                if status in ("completed", "failed", "interrupted"):
-                    job.completed_at = datetime.now(timezone.utc)
-            if error_msg:
-                job.error_message = error_msg
-
-            session.add(job)
-            await session.commit()
-
-    async def crawl_worker(url: str, depth: int):
-        nonlocal crawled_count
-        proxy_url = await ProxyManager.get_proxy()
-        try:
-            res = await run_fetch(
-                url=url,
-                method="GET",
-                headers={},
-                cookies={},
-                body=None,
-                json_body=None,
-                session=None,
-                render_js=render_js,
-                scroll=True,
-                proxy_url=proxy_url,
-                max_retries=1,
-                timeout=20,
-                impersonate="chrome120",
-                playwright_mgr=playwright_mgr,
-                output_format=output_format,
-                strip_links=strip_links,
-                llm_api_key=None,
-                llm_provider="openai" if os.getenv("OPENAI_API_KEY") else "gemini",
-                json_schema=None,
-                css_selector=css_selector,
-                actions=actions,
-                extraction_prompt=extraction_prompt,
-                stealth=stealth
-            )
-
-            async with lock:
-                new_result = None
-                if res.get("error") is None:
-                    if proxy_url:
-                        await ProxyManager.report_success(proxy_url)
-                    crawled_count += 1
-                    html = res.get("raw_html", "")
-                    content = res.get("content", "")
-
-                    title = "No Title"
-                    if html:
-                        try:
-                            soup = BeautifulSoup(html, "lxml")
-                            title = soup.find("title").get_text().strip() if soup.find("title") else "No Title"
-                        except Exception:
-                            pass
-
-                    new_result = {
-                        "url": url,
-                        "status_code": res.get("status_code"),
-                        "title": title,
-                        "content": content
-                    }
-
-                    if depth < max_depth:
-                        new_links = extract_links(html, url)
-                        for link in new_links:
-                            if limit_domain and urlparse(link).netloc != base_domain:
-                                continue
-                            if link not in visited and not any(q[0] == link for q in queue):
-                                queue.append((link, depth + 1))
-                else:
-                    if proxy_url:
-                        await ProxyManager.report_failure(proxy_url)
-                    new_result = {
-                        "url": url,
-                        "status_code": res.get("status_code", 0),
-                        "error": res.get("error"),
-                        "error_message": res.get("error_message")
-                    }
-
-                if new_result:
-                    await update_job_state([new_result], crawled_count)
-
-        except Exception as e:
-            logger.error(f"Error crawling {url}: {e}")
-            if proxy_url:
-                await ProxyManager.report_failure(proxy_url)
-        finally:
-            semaphore.release()
-
     try:
-        while (queue or active_tasks) and crawled_count < max_pages:
-            async with async_session_maker() as session:
-                job = await session.get(CrawlJob, crawl_id)
-                if not job:
-                    logger.info(f"Job {crawl_id} deleted. Exiting.")
-                    break
+        await crawl_manager._run_crawl(
+            crawl_id=crawl_id,
+            seed_url=seed_url,
+            max_pages=max_pages,
+            max_depth=max_depth,
+            render_js=render_js,
+            output_format=output_format,
+            strip_links=strip_links,
+            css_selector=css_selector,
+            limit_domain=limit_domain,
+            actions=actions,
+            extraction_prompt=extraction_prompt,
+            stealth=stealth,
+            webhook_url=webhook_url
+        )
 
-            finished = {t for t in active_tasks if t.done()}
-            active_tasks -= finished
-
-            async with lock:
-                while queue and queue[0][0] in visited:
-                    queue.pop(0)
-
-                if queue and len(active_tasks) < CONCURRENCY and crawled_count + len(active_tasks) < max_pages:
-                    url, depth = queue.pop(0)
-                    visited.add(url)
-                    await semaphore.acquire()
-                    task = asyncio.create_task(crawl_worker(url, depth))
-                    active_tasks.add(task)
-                    continue
-
-            if active_tasks:
-                await asyncio.wait(active_tasks, return_when=asyncio.FIRST_COMPLETED)
-            else:
-                break
-            await asyncio.sleep(0.1)
-
-        if active_tasks:
-            await asyncio.gather(*active_tasks, return_exceptions=True)
-
-        await update_job_state([], crawled_count, status="completed")
-
-        # Fetch completed job and trigger webhook
+        # Fetch completed job and trigger webhook / destinations
         async with async_session_maker() as session:
             completed_job = await session.get(CrawlJob, crawl_id)
             if completed_job:
@@ -384,7 +254,7 @@ async def run_crawl_task(
 
     except Exception as e:
         logger.error(f"ARQ crawl task {crawl_id} failed: {e}")
-        await update_job_state([], crawled_count, status="failed", error_msg=str(e))
+        await crawl_manager._update_job_state(crawl_id, [], 0, status="failed", error_message=str(e))
         if webhook_url:
             await notify_webhook(webhook_url, {"crawl_id": crawl_id, "status": "failed", "error": str(e)})
 

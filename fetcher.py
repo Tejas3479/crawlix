@@ -14,8 +14,10 @@ import re
 import socket
 import time
 from contextlib import asynccontextmanager
+import urllib.parse
 from datetime import datetime as dt_class
 from datetime import timezone
+from fastapi import HTTPException
 from urllib.parse import urljoin, urlparse
 
 import httpx
@@ -343,6 +345,11 @@ class SessionManager:
                 session_meta["last_active"] = now_str
                 session_meta["request_count"] += 1
             else:
+                current_count = await self.count_sessions()
+                if current_count >= MAX_SESSIONS:
+                    logger.warning(f"Session limit reached ({MAX_SESSIONS}). Rejecting new session {session_id}.")
+                    raise HTTPException(status_code=429, detail=f"Maximum concurrent sessions ({MAX_SESSIONS}) reached.")
+                    
                 logger.info(f"Creating new session context: {session_id} (engine: {engine})")
                 session_meta = {
                     "session_id": session_id,
@@ -821,7 +828,8 @@ async def run_fetch(
                 kwargs = {
                     "headers": headers,
                     "cookies": all_cookies,
-                    "timeout": timeout
+                    "timeout": timeout,
+                    "allow_redirects": False
                 }
                 if current_proxy:
                     kwargs["proxies"] = {"https": current_proxy, "http": current_proxy}
@@ -831,7 +839,19 @@ async def run_fetch(
                 elif body is not None:
                     kwargs["content"] = body.encode()
 
-                resp = await curl_session.request(method, str(url), **kwargs)
+                current_url = str(url)
+                redirects = 0
+                while redirects < 10:
+                    resp = await curl_session.request(method, current_url, **kwargs)
+                    if resp.status_code in (301, 302, 303, 307, 308) and "Location" in resp.headers:
+                        next_url = urljoin(current_url, resp.headers["Location"])
+                        if not await is_ssrf_safe(next_url):
+                            raise Exception("SSRF restricted address detected in redirect hop")
+                        current_url = next_url
+                        redirects += 1
+                    else:
+                        break
+                        
                 _t_connect = _time.monotonic()  # first response received
                 final_url = str(resp.url)
                 status_code = resp.status_code
@@ -847,6 +867,16 @@ async def run_fetch(
             else:
                 # PLAYWRIGHT PATH
                 async with playwright_mgr.acquire_context(current_proxy, headers, stealth=stealth) as context:
+                    async def route_interceptor(route):
+                        req_url = route.request.url
+                        if route.request.resource_type == "document":
+                            if not await is_ssrf_safe(req_url):
+                                await route.abort("blockedbyclient")
+                                return
+                        await route.continue_()
+                        
+                    await context.route("**/*", route_interceptor)
+                    
                     page = None
                     try:
                         await context.add_cookies([{"name": k, "value": v, "url": str(url)} for k, v in all_cookies.items()])
