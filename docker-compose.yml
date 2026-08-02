@@ -13,6 +13,9 @@ services:
       - SESSION_TTL_MINUTES=30
       - MAX_SESSIONS=100
       - REDIS_URL=redis://redis:6379/0
+      - DATABASE_URL=sqlite+aiosqlite:///app/data/crawlix.db
+    volumes:
+      - data_volume:/app/data
     depends_on:
       - redis
     restart: unless-stopped
@@ -33,10 +36,13 @@ services:
     command: arq worker.WorkerSettings
     environment:
       - REDIS_URL=redis://redis:6379/0
-      - DATABASE_URL=sqlite+aiosqlite:///data/crawlix.db
+      - DATABASE_URL=sqlite+aiosqlite:///app/data/crawlix.db
+    volumes:
+      - data_volume:/app/data
     depends_on:
       - redis
     restart: unless-stopped
 
 volumes:
   redis_data:
+  data_volume:

@@ -76,7 +76,7 @@ async def verify_api_key(
         async with async_session_maker() as session:
             result = await session.execute(select(ApiKey).limit(1))
             has_keys = result.scalars().first() is not None
-        if not has_keys:
+        if not has_keys and os.getenv("AUTH_DISABLED") == "true":
             return  # Auth is disabled completely
             
     raise HTTPException(status_code=401, detail="Invalid or missing API key")
@@ -107,12 +107,16 @@ class RateLimiter:
         cutoff = now - self.window
         redis_key = f"rate_limit:{key}"
 
-        async with redis_client.pipeline(transaction=True) as pipe:
-            pipe.zremrangebyscore(redis_key, 0, cutoff)
-            pipe.zadd(redis_key, {str(now): now})
-            pipe.zcard(redis_key)
-            pipe.expire(redis_key, self.window)
-            results = await pipe.execute()
+        try:
+            async with redis_client.pipeline(transaction=True) as pipe:
+                pipe.zremrangebyscore(redis_key, 0, cutoff)
+                pipe.zadd(redis_key, {str(now): now})
+                pipe.zcard(redis_key)
+                pipe.expire(redis_key, self.window)
+                results = await pipe.execute()
+        except Exception as e:
+            logger.warning(f"Redis rate limiter failed: {e}")
+            return False, 9999, 0
 
         count = results[2]
         if count > self.rpm:
@@ -349,6 +353,7 @@ class CrawlRequest(BaseModel):
     extraction_prompt: str | None = Field(None, max_length=5000)
     stealth: bool = False
     webhook_url: HttpUrl | None = None
+    destinations: list[str] | None = None
 
     @field_validator("url")
     @classmethod
@@ -479,7 +484,8 @@ async def start_crawl(req: CrawlRequest):
         actions=req.actions,
         extraction_prompt=req.extraction_prompt,
         stealth=req.stealth,
-        webhook_url=str(req.webhook_url) if req.webhook_url else None
+        webhook_url=str(req.webhook_url) if req.webhook_url else None,
+        destinations=req.destinations
     )
     return {"crawl_id": crawl_id, "status": "running"}
 
@@ -631,9 +637,6 @@ async def delete_schedule(sched_id: str):
         await session.commit()
         return {"deleted": True, "id": sched_id}
 
-# Mount static files
-if os.path.isdir("static"):
-    app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":
     import uvicorn
@@ -672,3 +675,7 @@ async def list_proxies():
         result = await session.execute(select(Proxy))
         proxies = result.scalars().all()
         return [{"id": p.id, "url": p.url, "is_active": p.is_active, "fail_count": p.fail_count} for p in proxies]
+
+# Mount static files
+if os.path.isdir("static"):
+    app.mount("/", StaticFiles(directory="static", html=True), name="static")

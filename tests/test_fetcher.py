@@ -1,4 +1,6 @@
 import os
+os.environ['AUTH_DISABLED'] = 'true'
+import os
 from unittest.mock import MagicMock, patch
 
 import httpx

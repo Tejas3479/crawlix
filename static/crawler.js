@@ -25,7 +25,8 @@ export async function renderCrawls() {
     }
 
     grid.innerHTML = crawls.map(c => {
-      const pct = Math.round((c.pages_crawled / c.max_pages) * 100);
+      const pagesCrawled = c.stats?.pages_crawled ?? 0;
+      const pct = Math.round((pagesCrawled / c.max_pages) * 100);
       let statusClass = "engine-curl";
       if (c.status === "running") statusClass = "engine-playwright";
       else if (c.status === "failed") statusClass = "status-offline";
@@ -40,7 +41,7 @@ export async function renderCrawls() {
             <div class="crawl-progress-bar" style="width:\${pct}%; height:100%; background:var(--accent-color); transition:width 0.3s ease;"></div>
           </div>
           <div class="card-meta" style="display:flex; justify-content:space-between; margin-top:4px;">
-            <span>Pages: \${c.pages_crawled} / \${c.max_pages}</span>
+            <span>Pages: \${pagesCrawled} / \${c.max_pages}</span>
             <span>\${timeAgo(c.created_at)}</span>
           </div>
           <button class="delete-crawl-btn" data-crawl-id="\${c.crawl_id}" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--text-tertiary); cursor:pointer; font-size:14px;">✕</button>
@@ -104,6 +105,13 @@ export async function startCrawlJob() {
   startBtn.disabled = true;
   startBtn.textContent = "Starting…";
 
+  // Parse destinations
+  let destinations = [];
+  const destInput = document.getElementById("crawl-destinations-input");
+  if (destInput && destInput.value.trim()) {
+    destinations = destInput.value.split(",").map(s => s.trim()).filter(Boolean);
+  }
+
   const payload = {
     url: urlVal,
     max_pages: parseInt(document.getElementById("crawl-max-pages-select").value, 10),
@@ -112,6 +120,7 @@ export async function startCrawlJob() {
     stealth: document.getElementById("crawl-stealth-checkbox").checked,
     output_format: document.getElementById("crawl-format-select").value,
     limit_domain: document.getElementById("crawl-limit-domain-checkbox").checked,
+    destinations: destinations,
     actions: [],
     extraction_prompt: document.getElementById("crawl-extraction-prompt")?.value.trim() || null
   };
@@ -212,7 +221,8 @@ export async function viewCrawlDetails(crawlId, silent = false) {
       return;
     }
     const crawl = await res.json();
-    titleEl.textContent = \`Crawl Results: \${crawl.url} (\${crawl.pages_crawled} pages)\`;
+    const pagesCrawled = crawl.stats?.pages_crawled ?? 0;
+    titleEl.textContent = \`Crawl Results: \${crawl.url} (\${pagesCrawled} pages)\`;
     detailsView.dataset.crawlData = JSON.stringify(crawl);
 
     const totalPages = crawl.results.length;
@@ -237,7 +247,8 @@ export async function viewCrawlDetails(crawlId, silent = false) {
       successRateEl.style.color = successRate > 80 ? "var(--success-color)" : (successRate > 50 ? "var(--warning-color)" : "var(--danger-color)");
     }
     if (pagesScrapedEl) {
-      pagesScrapedEl.textContent = \`\${crawl.pages_crawled} / \${crawl.max_pages}\`;
+      const pagesCrawled = crawl.stats?.pages_crawled ?? 0;
+      pagesScrapedEl.textContent = \`\${pagesCrawled} / \${crawl.max_pages}\`;
     }
     if (statusCodesEl) {
       statusCodesEl.textContent = statusCodeStr || "—";

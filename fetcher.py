@@ -1108,6 +1108,7 @@ class CrawlManager:
         extraction_prompt: str | None = None,
         stealth: bool = False,
         webhook_url: str | None = None,
+        destinations: list[str] | None = None,
         arq_pool=None
     ) -> str:
         async with async_session_maker() as session:
@@ -1118,6 +1119,7 @@ class CrawlManager:
                 render_js=render_js,
                 output_format=output_format,
                 webhook_url=webhook_url,
+                destinations=destinations or [],
                 status="running"
             )
             session.add(job)
