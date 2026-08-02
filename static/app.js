@@ -3,6 +3,7 @@ import { showToast, timeAgo, escapeHtml, updateMetaBar, initFramerMotion } from 
 import { checkHealth, fetchSessions, deleteSessionAPI, performFetchAPI, saveToHistory, downloadSessionsCsv, downloadSessionsJson } from './api.js';
 import { setupJsRenderingToggle, setupOutputFormatToggle, setupActionBuilder, parseActions, setupEnvPanel, createKvRow, parseKvContainer, generatePythonSnippet, isValidHttpUrl, validateJsonSchema, validateRequestBody, restoreBuilderStateUI } from './editor.js';
 import { renderCrawls, startCrawlJob, setupCrawlPolling, setupCrawlDownload, setupCrawlCsvDownload, setupCrawlScheduling } from './crawler.js';
+import { initAdmin, renderAdmin } from './admin.js';
 
 window.addEventListener("unhandledrejection", (event) => {
   console.error("[Crawlix Error Boundary] Unhandled Promise Rejection:", event.reason);
@@ -196,8 +197,9 @@ export async function renderSessions() {
           showToast("Connection error", "error");
         }
       });
-    });
-  } catch (e) { }
+  } catch (e) {
+    showToast("Error loading sessions: " + (e.message || "Network error"), "error");
+  }
 }
 
 export function renderHistory() {
@@ -208,7 +210,29 @@ export function renderHistory() {
   catch (e) { history = []; }
   
   if (history.length === 0) {
-    list.innerHTML = '<div class="empty-state">No requests yet — send a request to start building history.</div>';
+    list.innerHTML = `
+      <div class="empty-state" style="padding: 24px; text-align: center;">
+        <div style="margin-bottom: 8px; font-weight: 500; color: var(--text-primary);">Welcome to Crawlix</div>
+        <div style="margin-bottom: 16px; font-size: 13px; color: var(--text-secondary);">Set API key &rarr; Fetch example.com</div>
+        <button id="first-run-fetch-btn" class="send-btn" style="padding: 8px 16px; font-size: 13px;">Set API key &rarr; Fetch example.com</button>
+      </div>`;
+    const firstRunBtn = document.getElementById("first-run-fetch-btn");
+    if (firstRunBtn) {
+      firstRunBtn.addEventListener("click", () => {
+        if (!state.apiKey) {
+          const manageToggle = document.getElementById("env-manage-toggle");
+          if (manageToggle) manageToggle.click();
+          showToast("Please enter and save your API key first!", "warning", 3500);
+          const keyInput = document.getElementById("api-key-input");
+          if (keyInput) keyInput.focus();
+          return;
+        }
+        const urlInput = document.getElementById("url-input");
+        if (urlInput) urlInput.value = "https://example.com";
+        const sendBtn = document.getElementById("send-btn");
+        if (sendBtn) sendBtn.click();
+      });
+    }
     return;
   }
   
@@ -254,7 +278,8 @@ function setupRouting() {
     "nav-builder": "builder-section",
     "nav-crawler": "crawler-section",
     "nav-history": "history-section",
-    "nav-sessions": "session-panel"
+    "nav-sessions": "session-panel",
+    "nav-admin": "admin-section"
   };
   const allSections = Object.values(links);
 
@@ -282,6 +307,7 @@ function setupRouting() {
 
       if (sectionId === "session-panel") renderSessions();
       if (sectionId === "history-section") renderHistory();
+      if (sectionId === "admin-section") renderAdmin();
     });
   });
 }
@@ -658,6 +684,7 @@ document.addEventListener("DOMContentLoaded", () => {
   visibleInterval(checkHealth, 30000);
   visibleInterval(renderSessions, 30000);
   setupCrawlPolling();
+  initAdmin();
 
   initFramerMotion();
 });

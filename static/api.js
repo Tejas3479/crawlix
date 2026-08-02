@@ -37,7 +37,7 @@ export async function fetchSessions() {
   const headers = {};
   if (state.apiKey) headers["x-api-key"] = state.apiKey;
   const res = await fetch(API_BASE + "/api/sessions", { headers });
-  if (!res.ok) throw new Error("Failed to fetch sessions");
+  if (!res.ok) throw new Error("Failed to fetch sessions: " + res.statusText);
   return await res.json();
 }
 
@@ -45,7 +45,7 @@ export async function deleteSessionAPI(sid) {
   const headers = { "Content-Type": "application/json" };
   if (state.apiKey) headers["x-api-key"] = state.apiKey;
   const res = await fetch(API_BASE + "/api/sessions/" + sid, { method: "DELETE", headers });
-  if (!res.ok) throw new Error("Failed to delete");
+  if (!res.ok) throw new Error("Failed to delete: " + res.statusText);
   return res.ok;
 }
 

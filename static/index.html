@@ -20,6 +20,7 @@
       <a href="#crawler" class="nav-link" id="nav-crawler">Crawler</a>
       <a href="#history" class="nav-link" id="nav-history">History</a>
       <a href="#session-panel" class="nav-link" id="nav-sessions">Sessions</a>
+      <a href="#admin" class="nav-link" id="nav-admin">Admin</a>
     </nav>
     <div class="sidebar-section env-panel" id="env-panel" role="region" aria-label="API Key Management">
       <div class="env-panel-header">
@@ -310,12 +311,6 @@
       <!-- Crawl Form -->
       <div class="url-row">
         <input type="text" id="crawl-url-input" placeholder="https://example.com" autocomplete="off" aria-label="Crawl Start URL" style="flex: 1; height: 44px; background-color: rgba(255,255,255,0.06); border: 1px solid rgba(255,255,255,0.1); border-radius: 8px; color: var(--text-primary); padding: 0 14px; font-family: 'Inter', sans-serif; font-size: 14px; transition: all 0.15s ease;">
-        <!-- Destinations (Phase 7) -->
-        <div class="option-group" style="grid-column: span 3; display: flex; flex-direction: column;">
-          <label class="field-label" for="crawl-destinations-input" style="margin-bottom: 4px;">Vector DB Destination IDs (Comma separated)</label>
-          <input type="text" id="crawl-destinations-input" placeholder="e.g. 1234-abcd-5678" aria-label="Vector DB Destinations" style="height:40px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:8px; color:#e2e2e2; padding:0 12px; font-family:'Inter',sans-serif; font-size:13px;">
-        </div>
-
         <div style="grid-column: span 3; display: flex; gap: 8px;">
           <button id="crawl-start-btn" class="send-btn" style="flex: 2;" aria-label="Start Crawl Job">Start Crawl</button>
           <button id="crawl-schedule-btn" class="icon-btn" style="flex: 1; justify-content: center;" aria-label="Schedule Crawl">⏰ Schedule</button>
@@ -331,6 +326,10 @@
               <option value="20">20 pages</option>
               <option value="50">50 pages</option>
             </select>
+          </div>
+          <div class="option-group">
+            <label class="field-label" for="crawl-destinations-input">Vector DB Destination IDs</label>
+            <input type="text" id="crawl-destinations-input" placeholder="e.g. 1234-abcd-5678 (Optional)" aria-label="Vector DB Destinations" style="height:38px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#e2e2e2; padding:0 10px; font-family:'Inter',sans-serif; font-size:13px; width:100%;">
           </div>
           <div class="option-group">
             <label class="field-label" for="crawl-format-select">Output Format</label>
@@ -436,6 +435,70 @@
       <button id="history-clear-btn" class="icon-btn" title="Clear history" aria-label="Clear all request history">✕ Clear</button>
     </div>
     <div id="history-list" role="list" aria-label="Request history entries" style="display:flex; flex-direction:column; gap:8px; margin-top:8px;"></div>
+  </section>
+
+  <!-- Admin Panels Section (hidden) -->
+  <section class="section hidden" id="admin-section" style="margin: 32px;" aria-label="Admin Panels">
+    <div class="section-header-row" style="margin-bottom: 24px;">
+      <h2 class="section-title">Admin Controls</h2>
+      <button id="admin-refresh-btn" class="icon-btn" title="Refresh Admin Panels" aria-label="Refresh Admin Controls">↻ Refresh</button>
+    </div>
+    
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px;">
+      <!-- Destinations Admin Panel -->
+      <div class="crawl-card" style="padding: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Vector DB Destinations</h3>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="admin-dest-name" placeholder="Name" style="flex:1; height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 10px;">
+          <select id="admin-dest-type" style="height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 8px;">
+            <option value="pinecone">pinecone</option>
+            <option value="weaviate">weaviate</option>
+            <option value="supabase">supabase</option>
+          </select>
+          <button id="admin-dest-add-btn" class="send-btn" style="padding:0 14px; font-size:13px;">Add</button>
+        </div>
+        <input type="text" id="admin-dest-config" placeholder='Config JSON e.g. {"url": "http://..."}' style="width:100%; height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 10px; margin-bottom:12px;">
+        <div id="admin-dest-list" style="max-height: 180px; overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
+          <div class="empty-state">No destinations configured</div>
+        </div>
+      </div>
+
+      <!-- Schedules Admin Panel -->
+      <div class="crawl-card" style="padding: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Scheduled Crawls</h3>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="admin-sched-url" placeholder="https://example.com" style="flex:2; height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 10px;">
+          <input type="text" id="admin-sched-cron" placeholder="0 0 * * *" style="flex:1; height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 10px;">
+          <button id="admin-sched-add-btn" class="send-btn" style="padding:0 14px; font-size:13px;">Add</button>
+        </div>
+        <div id="admin-sched-list" style="max-height: 220px; overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
+          <div class="empty-state">No schedules configured</div>
+        </div>
+      </div>
+
+      <!-- Batch Upload Admin Panel -->
+      <div class="crawl-card" style="padding: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Batch Crawl Upload</h3>
+        <input type="file" id="admin-batch-file" accept=".csv,.txt" style="margin-bottom: 12px; color: #fff; display:block;">
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="admin-batch-webhook" placeholder="Optional Webhook URL" style="flex:1; height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 10px;">
+          <button id="admin-batch-start-btn" class="send-btn" style="padding:0 16px; font-size:13px;">Upload & Start</button>
+        </div>
+        <div id="admin-batch-status" style="font-size:13px; color:var(--text-secondary);"></div>
+      </div>
+
+      <!-- Proxies Admin Panel -->
+      <div class="crawl-card" style="padding: 20px;">
+        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Proxies Management</h3>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <input type="text" id="admin-proxy-url" placeholder="http://user:pass@host:port" style="flex:1; height:36px; background:rgba(255,255,255,0.06); border:1px solid rgba(255,255,255,0.1); border-radius:6px; color:#fff; padding:0 10px;">
+          <button id="admin-proxy-add-btn" class="send-btn" style="padding:0 14px; font-size:13px;">Add</button>
+        </div>
+        <div id="admin-proxy-list" style="max-height: 220px; overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
+          <div class="empty-state">No proxies configured</div>
+        </div>
+      </div>
+    </div>
   </section>
 
   <!-- Lightbox Overlay for Fullscreen Screenshot Pan/Zoom -->

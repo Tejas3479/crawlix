@@ -15,7 +15,10 @@ export async function renderCrawls() {
     const headers = {};
     if (state.apiKey) headers["x-api-key"] = state.apiKey;
     const res = await fetch("/api/crawl", { headers });
-    if (!res.ok) return;
+    if (!res.ok) {
+      const err = await res.json().catch(() => ({}));
+      throw new Error(err.detail || res.statusText);
+    }
     const crawls = await res.json();
     state.crawls = crawls;
 
@@ -78,7 +81,9 @@ export async function renderCrawls() {
         }
       });
     });
-  } catch (err) {}
+  } catch (err) {
+    showToast("Error loading crawls: " + (err.message || "Network error"), "error");
+  }
 }
 
 export async function startCrawlJob() {
@@ -149,7 +154,7 @@ export async function startCrawlJob() {
     viewCrawlDetails(data.crawl_id);
     setupCrawlPolling();
   } catch (err) {
-    showToast("Connection failed", "error");
+    showToast("Connection failed: " + (err.message || "Unknown error"), "error");
   } finally {
     startBtn.disabled = false;
     startBtn.textContent = "Start Crawl";
@@ -442,7 +447,7 @@ export function setupCrawlScheduling() {
       showToast("Crawl scheduled successfully!", "success", 2000);
       modal.classList.add("hidden");
     } catch(err) {
-      showToast("Connection failed", "error");
+      showToast("Schedule error: " + (err.message || "Connection failed"), "error");
     } finally {
       confirmBtn.disabled = false;
       confirmBtn.textContent = "Schedule";
