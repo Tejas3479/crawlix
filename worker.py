@@ -120,21 +120,21 @@ async def process_destinations(results: list, destination_ids: list[str]):
             elif dest.type == "weaviate":
                 import weaviate
                 # Wrap synchronous Weaviate calls to prevent event loop blocking
-                def _push_to_weaviate():
-                    client = weaviate.Client(url=dest.config.get("url", ""), auth_client_secret=weaviate.AuthApiKey(api_key=dest.config.get("api_key", "")))
-                    class_name = dest.config.get("class_name", "Document")
+                def _push_to_weaviate(target_dest, target_results, target_embeddings):
+                    client = weaviate.Client(url=target_dest.config.get("url", ""), auth_client_secret=weaviate.AuthApiKey(api_key=target_dest.config.get("api_key", "")))
+                    class_name = target_dest.config.get("class_name", "Document")
                     
                     with client.batch as batch:
-                        for i, r in enumerate(results):
+                        for i, r in enumerate(target_results):
                             properties = {
                                 "content": r.get("content", ""),
                                 "url": r.get("url", ""),
                                 "title": r.get("title", "")
                             }
-                            vector = embeddings[i] if i < len(embeddings) and embeddings[i] else None
+                            vector = target_embeddings[i] if i < len(target_embeddings) and target_embeddings[i] else None
                             batch.add_data_object(properties, class_name, vector=vector)
                 
-                await asyncio.to_thread(_push_to_weaviate)
+                await asyncio.to_thread(_push_to_weaviate, dest, results, embeddings)
                 logger.info("Pushed rows to Weaviate")
                     
         except Exception as e:
