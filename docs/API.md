@@ -10,6 +10,32 @@
 
 ---
 
+## Endpoints Overview
+
+| Method | Endpoint | Category | Description |
+|--------|----------|----------|-------------|
+| `POST` | `/fetch` | Core | Fetch a single URL (curl-cffi or Playwright JS rendering) |
+| `POST` | `/api/crawl` | Crawl | Start an asynchronous recursive site crawl |
+| `GET` | `/api/crawl` | Crawl | List all recent crawl jobs |
+| `GET` | `/api/crawl/{id}` | Crawl | Poll crawl job status & retrieved pages |
+| `DELETE` | `/api/crawl/{id}` | Crawl | Delete a crawl job and its results |
+| `POST` | `/api/crawl/batch` | Batch | Start a batch crawl job via file upload |
+| `GET` | `/api/crawl/batch/{id}` | Batch | Poll batch crawl status & progress |
+| `GET` | `/api/crawl/batch/{id}/download` | Batch | Download batch results in CSV/JSON format |
+| `GET` | `/api/sessions` | Sessions | List active browser sessions |
+| `DELETE` | `/api/sessions/{id}` | Sessions | Destroy a browser session and release cookies |
+| `POST` | `/api/destinations` | Admin | Create a webhook or Pinecone destination |
+| `GET` | `/api/destinations` | Admin | List all registered destinations |
+| `DELETE` | `/api/destinations/{id}` | Admin | Delete a destination |
+| `POST` | `/api/schedule` | Admin | Create a recurring cron crawl schedule |
+| `GET` | `/api/schedule` | Admin | List all active scheduled crawls |
+| `DELETE` | `/api/schedule/{id}` | Admin | Delete a scheduled crawl |
+| `POST` | `/api/proxies` | Admin | Add a proxy server URL (`http://user:pass@host:port`) |
+| `GET` | `/api/proxies` | Admin | List all registered proxy servers |
+| `GET` | `/api/health` | System | Service health check (no auth required) |
+
+---
+
 ## POST /fetch
 
 Fetch a single URL. Supports both fast HTTP (`curl-cffi`) and full JS rendering (Playwright).
@@ -308,23 +334,188 @@ Health check — no authentication required.
 
 ---
 
-## Other Routes
+## Crawl Management (/api/crawl)
 
-| Method | Route | Description |
-|--------|-------|-------------|
-| `GET` | `/api/crawl` | List all crawl jobs |
-| `DELETE` | `/api/crawl/{crawl_id}` | Delete a crawl job |
-| `POST` | `/api/crawl/batch` | Start a batch crawl job |
-| `GET` | `/api/crawl/batch/{batch_id}` | Poll batch crawl status |
-| `GET` | `/api/crawl/batch/{batch_id}/download` | Download batch results (CSV/JSON) |
-| `POST` | `/api/destinations` | Create a webhook destination |
-| `GET` | `/api/destinations` | List all destinations |
-| `DELETE` | `/api/destinations/{dest_id}` | Delete a destination |
-| `POST` | `/api/schedule` | Schedule a recurring crawl |
-| `GET` | `/api/schedule` | List all schedules |
-| `DELETE` | `/api/schedule/{sched_id}` | Delete a schedule |
-| `POST` | `/api/proxies` | Upload or set a proxy list |
-| `GET` | `/api/proxies` | Retrieve the active proxy list |
+### GET /api/crawl
+List all recent crawl jobs ordered by creation time.
+
+#### Response
+```json
+[
+  {
+    "crawl_id": "95ae2021-1589-4bec-9d40-ca0d308ff5b9",
+    "url": "https://example.com",
+    "status": "completed",
+    "pages_crawled": 5,
+    "max_pages": 10,
+    "created_at": "2026-08-03T12:00:00Z",
+    "url_count": 5
+  }
+]
+```
+
+### DELETE /api/crawl/{crawl_id}
+Delete a crawl job and its stored results.
+
+#### Response
+```json
+{ "deleted": true, "crawl_id": "95ae2021-1589-4bec-9d40-ca0d308ff5b9" }
+```
+
+---
+
+## Batch Crawls (/api/crawl/batch)
+
+### POST /api/crawl/batch
+Start a batch crawl job by uploading a CSV or text file containing a list of URLs (one per line).
+
+#### Request (Multipart Form Data)
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `file` | file | **required** | CSV or plain-text file upload containing target URLs |
+| `render_js` | boolean | `false` | Enable Playwright JS rendering for batch URLs |
+| `output_format` | string | `"markdown"` | `"markdown"` \| `"html"` \| `"structured"` |
+| `webhook_url` | string | `null` | Optional webhook notification callback URL |
+
+#### Response
+```json
+{
+  "batch_id": "batch-884a22c0",
+  "status": "queued",
+  "urls_count": 12
+}
+```
+
+### GET /api/crawl/batch/{batch_id}
+Poll the status and progress of a batch crawl job.
+
+#### Response
+```json
+{
+  "id": "batch-884a22c0",
+  "status": "completed",
+  "urls": ["https://example.com/a", "https://example.com/b"],
+  "results": [
+    {
+      "url": "https://example.com/a",
+      "status_code": 200,
+      "content": "# Page A..."
+    }
+  ],
+  "created_at": "2026-08-03T12:00:00Z"
+}
+```
+
+### GET /api/crawl/batch/{batch_id}/download
+Download completed batch results as a CSV file. Returns HTTP `400` if the batch job has not finished processing.
+
+---
+
+## Webhook & Vector Destinations (/api/destinations)
+
+### POST /api/destinations
+Register a webhook endpoint or vector DB index (Pinecone, Weaviate, Supabase) for automatic data ingestion.
+
+#### Request Body
+```json
+{
+  "name": "Production Pinecone",
+  "type": "pinecone",
+  "config": {
+    "api_key": "pcsk-...",
+    "index_name": "crawlix-index"
+  }
+}
+```
+
+#### Response
+```json
+{
+  "id": "dest-7b3e10c0",
+  "name": "Production Pinecone",
+  "type": "pinecone",
+  "config": { "api_key": "pcsk-...", "index_name": "crawlix-index" }
+}
+```
+
+### GET /api/destinations
+Retrieve a list of all registered destinations.
+
+### DELETE /api/destinations/{dest_id}
+Delete a registered destination by ID.
+
+---
+
+## Scheduled Crawls (/api/schedule)
+
+### POST /api/schedule
+Create a recurring crawl job using a standard cron expression.
+
+#### Request Body
+```json
+{
+  "cron_expression": "*/15 * * * *",
+  "payload": {
+    "url": "https://example.com",
+    "max_pages": 10,
+    "max_depth": 2
+  }
+}
+```
+
+#### Response
+```json
+{
+  "id": "sched-f203810a",
+  "cron_expression": "*/15 * * * *",
+  "payload": { "url": "https://example.com", "max_pages": 10, "max_depth": 2 },
+  "status": "active"
+}
+```
+
+### GET /api/schedule
+List all active scheduled crawl jobs.
+
+### DELETE /api/schedule/{sched_id}
+Delete a scheduled crawl job.
+
+---
+
+## Proxy Management (/api/proxies)
+
+### POST /api/proxies
+Add a proxy server URL for rotation during scraping requests.
+
+#### Request Body
+```json
+{
+  "url": "http://user:pass@proxy-host.example.com:8080"
+}
+```
+
+#### Response
+```json
+{
+  "status": "added",
+  "id": "proxy-d03bc214"
+}
+```
+*(Returns `"status": "already_exists"` if the proxy URL is already registered).*
+
+### GET /api/proxies
+Retrieve all registered proxy servers along with their activity status and error count.
+
+#### Response
+```json
+[
+  {
+    "id": "proxy-d03bc214",
+    "url": "http://user:pass@proxy-host.example.com:8080",
+    "is_active": true,
+    "fail_count": 0
+  }
+]
+```
 
 ---
 

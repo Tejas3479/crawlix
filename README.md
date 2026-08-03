@@ -119,15 +119,27 @@ See [docs/API.md](docs/API.md) for full request/response schemas.
 
 **Base URL:** `http://localhost:8000`
 
-| Method | Endpoint | Description |
-|--------|----------|-------------|
-| `POST` | `/fetch` | Fetch a URL (curl or Playwright) |
-| `POST` | `/api/crawl` | Start a recursive site crawl |
-| `GET` | `/api/crawl/{id}` | Get crawl job status & results |
-| `POST` | `/api/crawl/batch` | Start a batch crawl job |
-| `GET` | `/api/sessions` | List active browser sessions |
-| `DELETE` | `/api/sessions/{id}` | Destroy a browser session |
-| `GET` | `/api/health` | Health check (no auth required) |
+| Method | Endpoint | Category | Description |
+|--------|----------|----------|-------------|
+| `POST` | `/fetch` | Core | Fetch a URL (fast HTTP or Playwright JS rendering) |
+| `POST` | `/api/crawl` | Crawl | Start an asynchronous recursive site crawl |
+| `GET` | `/api/crawl` | Crawl | List all recent crawl jobs |
+| `GET` | `/api/crawl/{id}` | Crawl | Poll crawl job status & retrieved pages |
+| `DELETE` | `/api/crawl/{id}` | Crawl | Delete a crawl job and its results |
+| `POST` | `/api/crawl/batch` | Batch | Start a batch crawl job via file upload |
+| `GET` | `/api/crawl/batch/{id}` | Batch | Poll batch crawl status & progress |
+| `GET` | `/api/crawl/batch/{id}/download` | Batch | Download batch results in CSV/JSON format |
+| `GET` | `/api/sessions` | Sessions | List active browser sessions |
+| `DELETE` | `/api/sessions/{id}` | Sessions | Destroy a browser session and release cookies |
+| `POST` | `/api/destinations` | Admin | Create a webhook or Pinecone destination |
+| `GET` | `/api/destinations` | Admin | List all registered destinations |
+| `DELETE` | `/api/destinations/{id}` | Admin | Delete a destination |
+| `POST` | `/api/schedule` | Admin | Create a recurring cron crawl schedule |
+| `GET` | `/api/schedule` | Admin | List all active scheduled crawls |
+| `DELETE` | `/api/schedule/{id}` | Admin | Delete a scheduled crawl |
+| `POST` | `/api/proxies` | Admin | Add a proxy server URL (`http://user:pass@host:port`) |
+| `GET` | `/api/proxies` | Admin | List all registered proxy servers |
+| `GET` | `/api/health` | System | Service health check (no auth required) |
 
 ### Quick example
 
