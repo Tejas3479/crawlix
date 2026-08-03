@@ -25,6 +25,16 @@ async def init_db():
                 os.makedirs(dir_name, exist_ok=True)
     async with engine.begin() as conn:
         await conn.run_sync(SQLModel.metadata.create_all)
+        if "sqlite" in DATABASE_URL:
+            for stmt in [
+                "ALTER TABLE crawljob ADD COLUMN destinations JSON DEFAULT '[]'",
+                "ALTER TABLE crawljob ADD COLUMN webhook_url VARCHAR DEFAULT NULL",
+                "ALTER TABLE scheduledcrawl ADD COLUMN status VARCHAR DEFAULT 'active'",
+            ]:
+                try:
+                    await conn.exec_driver_sql(stmt)
+                except Exception:
+                    pass
 
 async def get_session() -> AsyncSession:
     async with async_session_maker() as session:
