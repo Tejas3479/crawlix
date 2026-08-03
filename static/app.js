@@ -1,5 +1,5 @@
 import { state, API_BASE, TABS, MAX_HISTORY, saveBuilderState, loadBuilderState } from './state.js';
-import { showToast, timeAgo, escapeHtml, updateMetaBar, initFramerMotion } from './ui.js';
+import { showToast, timeAgo, escapeHtml, updateMetaBar, initFramerMotion, animateViewEntrance, animateListItems } from './ui.js';
 import { checkHealth, fetchSessions, deleteSessionAPI, performFetchAPI, saveToHistory, downloadSessionsCsv, downloadSessionsJson } from './api.js';
 import { setupJsRenderingToggle, setupOutputFormatToggle, setupActionBuilder, parseActions, setupEnvPanel, createKvRow, parseKvContainer, generatePythonSnippet, isValidHttpUrl, validateJsonSchema, validateRequestBody, restoreBuilderStateUI } from './editor.js';
 import { renderCrawls, startCrawlJob, setupCrawlPolling, setupCrawlDownload, setupCrawlCsvDownload, setupCrawlScheduling } from './crawler.js';
@@ -197,6 +197,8 @@ export async function renderSessions() {
           showToast("Connection error", "error");
         }
       });
+    });
+    animateListItems("#session-grid > .session-card");
   } catch (e) {
     showToast("Error loading sessions: " + (e.message || "Network error"), "error");
   }
@@ -271,6 +273,7 @@ export function renderHistory() {
     item.addEventListener("click", handler);
     item.addEventListener("keydown", e => { if (e.key === "Enter" || e.key === " ") handler(); });
   });
+  animateListItems("#history-list > .history-item");
 }
 
 function setupRouting() {
@@ -304,6 +307,7 @@ function setupRouting() {
         respPanel.classList.add("hidden");
       }
       document.getElementById(sectionId).classList.remove("hidden");
+      animateViewEntrance("#" + sectionId);
 
       if (sectionId === "session-panel") renderSessions();
       if (sectionId === "history-section") renderHistory();
@@ -652,7 +656,10 @@ document.addEventListener("DOMContentLoaded", () => {
         saveToHistory(reqBody, data);
 
         const respPanel = document.getElementById("response-panel");
-        if (respPanel) respPanel.classList.remove("hidden");
+        if (respPanel) {
+          respPanel.classList.remove("hidden");
+          animateViewEntrance(respPanel);
+        }
         
         updateMetaBar(data);
         renderTabPatched(state.activeTab);

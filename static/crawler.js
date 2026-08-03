@@ -1,5 +1,5 @@
 import { state, API_BASE } from './state.js';
-import { timeAgo, escapeHtml, showToast } from './ui.js';
+import { timeAgo, escapeHtml, showToast, animateListItems, animateModalOpen, getMotion } from './ui.js';
 import { isValidHttpUrl } from './editor.js';
 // We will rely on custom events or app.js exports for tab switching, 
 // to avoid circular imports.
@@ -169,6 +169,7 @@ export async function renderCrawls() {
         }
       });
     });
+    animateListItems("#crawls-list > .crawl-card");
   } catch (err) {
     showToast("Error loading crawls: " + (err.message || "Network error"), "error");
   }
@@ -429,11 +430,21 @@ export function setupCrawlScheduling() {
   
   schedBtn.addEventListener("click", () => {
     modal.classList.remove("hidden");
+    animateModalOpen(modal, modal.querySelector(".lightbox-content"));
   });
   
-  cancelBtn.addEventListener("click", () => {
-    modal.classList.add("hidden");
-  });
+  const closeModal = () => {
+    const Motion = getMotion();
+    if (Motion && typeof Motion.animate === "function") {
+      Motion.animate(modal, { opacity: 0 }, { duration: 0.18 }).finished.then(() => {
+        modal.classList.add("hidden");
+      }).catch(() => modal.classList.add("hidden"));
+    } else {
+      modal.classList.add("hidden");
+    }
+  };
+
+  cancelBtn.addEventListener("click", closeModal);
   
   confirmBtn.addEventListener("click", async () => {
     const cronExpr = document.getElementById("schedule-cron-input").value.trim();

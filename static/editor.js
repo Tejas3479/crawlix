@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { showToast, escapeHtml } from './ui.js';
+import { showToast, escapeHtml, animateViewEntrance } from './ui.js';
 import { checkHealth } from './api.js';
 
 export function isValidHttpUrl(string) {
@@ -439,6 +439,7 @@ export function setupEnvPanel() {
   toggleBtn.addEventListener("click", () => {
     const isCurrentlyHidden = managePanel.classList.contains("hidden");
     managePanel.classList.toggle("hidden", !isCurrentlyHidden);
+    if (isCurrentlyHidden) animateViewEntrance(managePanel);
     toggleBtn.classList.toggle("active", isCurrentlyHidden);
     toggleBtn.setAttribute("aria-expanded", String(isCurrentlyHidden));
   });

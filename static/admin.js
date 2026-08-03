@@ -1,5 +1,5 @@
 import { state } from './state.js';
-import { showToast, escapeHtml } from './ui.js';
+import { showToast, escapeHtml, animateListItems } from './ui.js';
 
 export function initAdmin() {
   const refreshBtn = document.getElementById("admin-refresh-btn");
@@ -295,6 +295,7 @@ export async function renderAdmin() {
       }
     }
   } finally {
+    animateListItems("#admin-destinations-list > div, #admin-schedules-list > div, #admin-proxies-list > div");
     adminSec?.setAttribute("aria-busy", "false");
   }
 }

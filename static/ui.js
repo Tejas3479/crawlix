@@ -1,5 +1,9 @@
 import { state } from './state.js';
 
+export function getMotion() {
+  return window.Motion || window.motion || (window.MotionOne && window.MotionOne.dom) || null;
+}
+
 export function showToast(message, type = "info", duration = 3500) {
   const container = document.getElementById("toast-container");
   if (!container) return;
@@ -9,15 +13,36 @@ export function showToast(message, type = "info", duration = 3500) {
   toast.textContent = message;
   container.appendChild(toast);
   
-  requestAnimationFrame(() => {
+  const Motion = getMotion();
+  if (Motion && typeof Motion.animate === "function") {
     toast.classList.add("show");
-  });
+    Motion.animate(
+      toast,
+      { opacity: [0, 1], y: [25, 0], scale: [0.9, 1] },
+      { type: "spring", stiffness: 450, damping: 25 }
+    );
+  } else {
+    requestAnimationFrame(() => {
+      toast.classList.add("show");
+    });
+  }
   
   setTimeout(() => {
-    toast.classList.remove("show");
-    setTimeout(() => {
-      toast.remove();
-    }, 200);
+    const activeMotion = getMotion();
+    if (activeMotion && typeof activeMotion.animate === "function") {
+      activeMotion.animate(
+        toast,
+        { opacity: 0, y: 15, scale: 0.95 },
+        { duration: 0.2 }
+      ).finished.then(() => {
+        toast.remove();
+      }).catch(() => toast.remove());
+    } else {
+      toast.classList.remove("show");
+      setTimeout(() => {
+        toast.remove();
+      }, 200);
+    }
   }, duration);
 }
 
@@ -160,10 +185,20 @@ export function initFramerMotion() {
       if (target && target.tagName === "IMG" && (target.classList.contains("screenshot-img") || target.closest("#tab-screenshot"))) {
         lightboxImg.src = target.src;
         lightboxOverlay.classList.add("active");
+        animateModalOpen(lightboxOverlay, lightboxImg);
       }
     });
 
-    const closeLightbox = () => lightboxOverlay.classList.remove("active");
+    const closeLightbox = () => {
+      const Motion = getMotion();
+      if (Motion && typeof Motion.animate === "function") {
+        Motion.animate(lightboxOverlay, { opacity: 0 }, { duration: 0.18 }).finished.then(() => {
+          lightboxOverlay.classList.remove("active");
+        }).catch(() => lightboxOverlay.classList.remove("active"));
+      } else {
+        lightboxOverlay.classList.remove("active");
+      }
+    };
     if (lightboxCloseBtn) lightboxCloseBtn.addEventListener("click", closeLightbox);
     lightboxOverlay.addEventListener("click", (e) => {
       if (e.target === lightboxOverlay) closeLightbox();
@@ -173,5 +208,80 @@ export function initFramerMotion() {
         closeLightbox();
       }
     });
+  }
+
+  const Motion = getMotion();
+  if (Motion && typeof Motion.animate === "function") {
+    const { animate } = Motion;
+    animate("#sidebar", { x: [-32, 0], opacity: [0, 1] }, { duration: 0.45, easing: [0.16, 1, 0.3, 1] });
+    const activeSection = document.querySelector(".main-content > div:not(.hidden)");
+    if (activeSection) {
+      animate(activeSection, { y: [18, 0], opacity: [0, 1] }, { duration: 0.45, easing: [0.16, 1, 0.3, 1] });
+    }
+
+    document.querySelectorAll("button, .nav-link, .tab-btn, .option-card, .action-item").forEach(btn => {
+      if (btn._hasMotionSpring) return;
+      btn._hasMotionSpring = true;
+      btn.addEventListener("pointerdown", () => {
+        const m = getMotion();
+        if (m && typeof m.animate === "function") {
+          m.animate(btn, { scale: 0.95 }, { type: "spring", stiffness: 500, damping: 25 });
+        }
+      });
+      btn.addEventListener("pointerup", () => {
+        const m = getMotion();
+        if (m && typeof m.animate === "function") {
+          m.animate(btn, { scale: 1 }, { type: "spring", stiffness: 500, damping: 25 });
+        }
+      });
+      btn.addEventListener("pointerleave", () => {
+        const m = getMotion();
+        if (m && typeof m.animate === "function") {
+          m.animate(btn, { scale: 1 }, { duration: 0.15 });
+        }
+      });
+    });
+  }
+}
+
+export function animateViewEntrance(target) {
+  const Motion = getMotion();
+  if (!Motion || typeof Motion.animate !== "function" || !target) return;
+  const { animate } = Motion;
+  const el = typeof target === "string" ? document.querySelector(target) : target;
+  if (!el) return;
+  animate(
+    el,
+    { opacity: [0, 1], y: [14, 0], scale: [0.99, 1] },
+    { duration: 0.35, easing: [0.16, 1, 0.3, 1] }
+  );
+}
+
+export function animateListItems(selector) {
+  const Motion = getMotion();
+  if (!Motion || typeof Motion.animate !== "function") return;
+  const { animate, stagger } = Motion;
+  const items = document.querySelectorAll(selector);
+  if (items && items.length > 0) {
+    const delayVal = typeof stagger === "function" ? stagger(0.04) : 0;
+    animate(
+      items,
+      { opacity: [0, 1], y: [12, 0], scale: [0.98, 1] },
+      { delay: delayVal, duration: 0.35, easing: [0.16, 1, 0.3, 1] }
+    );
+  }
+}
+
+export function animateModalOpen(modalEl, contentEl) {
+  const Motion = getMotion();
+  if (!Motion || typeof Motion.animate !== "function" || !modalEl) return;
+  const { animate } = Motion;
+  animate(modalEl, { opacity: [0, 1] }, { duration: 0.2 });
+  if (contentEl) {
+    animate(
+      contentEl,
+      { scale: [0.85, 1], opacity: [0, 1], y: [24, 0] },
+      { type: "spring", stiffness: 450, damping: 26 }
+    );
   }
 }
