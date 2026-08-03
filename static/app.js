@@ -1,5 +1,5 @@
 import { state, API_BASE, TABS, MAX_HISTORY, saveBuilderState, loadBuilderState } from './state.js';
-import { showToast, timeAgo, escapeHtml, updateMetaBar, initFramerMotion, animateViewEntrance, animateListItems } from './ui.js';
+import { showToast, timeAgo, escapeHtml, updateMetaBar, initCardEffects, animateViewEntrance, animateListItems } from './ui.js';
 import { checkHealth, fetchSessions, deleteSessionAPI, performFetchAPI, saveToHistory, downloadSessionsCsv, downloadSessionsJson } from './api.js';
 import { setupJsRenderingToggle, setupOutputFormatToggle, setupActionBuilder, parseActions, setupEnvPanel, createKvRow, parseKvContainer, generatePythonSnippet, isValidHttpUrl, validateJsonSchema, validateRequestBody, restoreBuilderStateUI } from './editor.js';
 import { renderCrawls, startCrawlJob, setupCrawlPolling, setupCrawlDownload, setupCrawlCsvDownload, setupCrawlScheduling } from './crawler.js';
@@ -697,5 +697,5 @@ document.addEventListener("DOMContentLoaded", () => {
   setupCrawlPolling();
   initAdmin();
 
-  initFramerMotion();
+  initCardEffects();
 });

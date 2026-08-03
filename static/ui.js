@@ -146,7 +146,7 @@ export function updateMetaBar(data) {
   renderWaterfall(data.timing);
 }
 
-export function initFramerMotion() {
+export function initCardEffects() {
   document.querySelectorAll(".glow-card, .request-panel, .options-grid, .meta-bar").forEach(card => {
     card.classList.add("glow-card");
     card.addEventListener("mousemove", (e) => {
