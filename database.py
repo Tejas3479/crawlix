@@ -11,7 +11,18 @@ from sqlmodel import JSON, Column, Field, SQLModel, String
 # Retrieve DATABASE_URL from env, default to local SQLite
 DATABASE_URL = os.getenv("DATABASE_URL", "sqlite+aiosqlite:///data/crawlix.db")
 
-engine = create_async_engine(DATABASE_URL, echo=False)
+# PostgreSQL gets production-grade connection pool settings;
+# SQLite uses StaticPool internally and does not support these options.
+_engine_kwargs: dict[str, Any] = {"echo": False}
+if "sqlite" not in DATABASE_URL:
+    _engine_kwargs.update({
+        "pool_size": 10,
+        "max_overflow": 20,
+        "pool_pre_ping": True,
+        "pool_recycle": 300,
+    })
+
+engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )

@@ -172,7 +172,7 @@ flowchart TD
     end
     
     subgraph Storage["State & Persistence"]
-        DB[("SQLite Database<br/><i>Jobs, API Keys, Proxies</i>")]
+        DB[("PostgreSQL<br/><i>Jobs, API Keys, Proxies</i>")]
         REDIS[("Redis<br/><i>ARQ Queue & PubSub</i>")]
     end
 
@@ -224,7 +224,7 @@ sequenceDiagram
     actor Client
     participant API as FastAPI (app.py)
     participant Worker as ARQ Worker
-    participant DB as SQLite & Redis
+    participant DB as PostgreSQL & Redis
     participant Guard as SSRF Guard
     participant Engine as Fetch Engine
     participant AI as AI & Vector DBs
