@@ -1003,6 +1003,12 @@ async def run_fetch(
                             except Exception:
                                 pass
 
+            if current_proxy:
+                if status_code in (429, 500, 502, 503, 504):
+                    await ProxyManager.report_failure(current_proxy)
+                else:
+                    await ProxyManager.report_success(current_proxy)
+
             if status_code in (429, 500, 502, 503, 504) and attempt < max_retries:
                 wait = 1.0 * (2 ** attempt) + random.uniform(0, 1)
                 logger.warning(f"Fetch failed with status {status_code}. Retrying in {wait:.2f}s...")
@@ -1011,6 +1017,9 @@ async def run_fetch(
             break
 
         except Exception as e:
+            if current_proxy:
+                await ProxyManager.report_failure(current_proxy)
+                
             e_str = str(e)
             err_type = type(e).__name__
 
@@ -1292,8 +1301,6 @@ class CrawlManager:
 
                     new_result = None
                     if res.get("error") is None:
-                        if proxy_url:
-                            await ProxyManager.report_success(proxy_url)
                         crawled_count += 1
                         html = res.get("raw_html", "")
                         content = res.get("content", "")
@@ -1322,8 +1329,6 @@ class CrawlManager:
                                 if link not in visited and not any(q[0] == link for q in queue):
                                     queue.append((link, depth + 1))
                     else:
-                        if proxy_url:
-                            await ProxyManager.report_failure(proxy_url)
                         new_result = {
                             "url": url,
                             "status_code": res.get("status_code", 0),
@@ -1336,8 +1341,6 @@ class CrawlManager:
                         
             except Exception as e:
                 logger.error(f"Failed to crawl {url}: {e}")
-                if proxy_url:
-                    await ProxyManager.report_failure(proxy_url)
             finally:
                 semaphore.release()
 
