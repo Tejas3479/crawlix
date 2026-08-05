@@ -93,6 +93,8 @@ python -m venv .venv
 pip install -r requirements.txt
 playwright install chromium
 
+python -m alembic upgrade head
+
 API_KEYS=your-secret-key uvicorn app:app --reload
 ```
 

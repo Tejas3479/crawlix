@@ -16,5 +16,5 @@ COPY . .
 
 EXPOSE 8000
 
-# Run Uvicorn server
-CMD ["uvicorn", "app:app", "--host", "0.0.0.0", "--port", "8000"]
+# Run Alembic migrations and then start Uvicorn server
+CMD ["sh", "-c", "python -m alembic upgrade head && uvicorn app:app --host 0.0.0.0 --port 8000"]
