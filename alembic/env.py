@@ -17,7 +17,9 @@ if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
 from sqlmodel import SQLModel
+
 import database  # This imports models and sets up metadata
+
 target_metadata = SQLModel.metadata
 
 # other values from the config, defined by the needs of env.py,
