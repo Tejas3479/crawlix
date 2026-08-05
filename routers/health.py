@@ -1,7 +1,8 @@
 from fastapi import APIRouter
 from sqlalchemy import text
-from fetcher import playwright_mgr, session_manager, redis_client
+
 from database import async_session_maker
+from fetcher import playwright_mgr, redis_client, session_manager
 
 router = APIRouter(tags=["health"])
 
@@ -14,14 +15,14 @@ async def health():
         async with async_session_maker() as session:
             await session.execute(text("SELECT 1"))
     except Exception as e:
-        db_status = f"error: {str(e)}"
+        db_status = f"error: {e!s}"
 
     # Check Redis
     redis_status = "ok"
     try:
         await redis_client.ping()
     except Exception as e:
-        redis_status = f"error: {str(e)}"
+        redis_status = f"error: {e!s}"
 
     return {
         "status": "ok" if db_status == "ok" and redis_status == "ok" else "degraded",
