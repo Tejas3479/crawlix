@@ -139,6 +139,7 @@ See [docs/API.md](docs/API.md) for full request/response schemas.
 | `DELETE` | `/api/schedule/{id}` | Admin | Delete a scheduled crawl |
 | `POST` | `/api/proxies` | Admin | Add a proxy server URL (`http://user:pass@host:port`) |
 | `GET` | `/api/proxies` | Admin | List all registered proxy servers |
+| `DELETE` | `/api/proxies/{id}` | Admin | Delete a proxy server by ID |
 | `GET` | `/api/health` | System | Service health check (no auth required) |
 
 ### Quick example

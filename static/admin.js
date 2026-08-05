@@ -286,8 +286,25 @@ export async function renderAdmin() {
                   ${p.is_active ? 'Active' : 'Inactive'} (Fails: ${p.fail_count})
                 </span>
               </div>
+              <button class="delete-proxy-btn icon-btn" data-id="${p.id}" style="color:#ef4444;" title="Delete">✕</button>
             </div>
           `).join("");
+
+          proxyList.querySelectorAll(".delete-proxy-btn").forEach(btn => {
+            btn.addEventListener("click", async () => {
+              try {
+                const resDel = await fetch(`/api/proxies/${btn.dataset.id}`, { method: "DELETE", headers });
+                if (!resDel.ok) {
+                  const err = await resDel.json().catch(() => ({}));
+                  throw new Error(err.detail || resDel.statusText);
+                }
+                showToast("Proxy deleted", "success");
+                renderAdmin();
+              } catch (err) {
+                showToast("Error deleting proxy: " + err.message, "error");
+              }
+            });
+          });
         }
       } catch (err) {
         proxyList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;

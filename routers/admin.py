@@ -110,3 +110,16 @@ async def list_proxies():
             }
             for p in proxies
         ]
+
+
+@router.delete("/api/proxies/{proxy_id}", dependencies=[Depends(verify_api_key)])
+async def delete_proxy(proxy_id: str):
+    async with async_session_maker() as session:
+        result = await session.execute(select(Proxy).where(Proxy.id == proxy_id))
+        proxy = result.scalars().first()
+        if not proxy:
+            raise HTTPException(status_code=404, detail="Proxy not found")
+
+        await session.delete(proxy)
+        await session.commit()
+        return {"status": "deleted"}
