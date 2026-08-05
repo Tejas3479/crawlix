@@ -158,6 +158,53 @@ app.add_middleware(
 )
 
 
+# Security headers middleware
+@app.middleware("http")
+async def security_headers_middleware(request: Request, call_next):
+    response = await call_next(request)
+
+    # Prevent MIME-type sniffing
+    response.headers["X-Content-Type-Options"] = "nosniff"
+
+    # Clickjacking protection
+    response.headers["X-Frame-Options"] = "DENY"
+
+    # Disable legacy XSS filter (modern CSP is the proper defense)
+    response.headers["X-XSS-Protection"] = "0"
+
+    # Limit referrer information leaked to external sites
+    response.headers["Referrer-Policy"] = "strict-origin-when-cross-origin"
+
+    # Cross-Origin isolation headers
+    response.headers["Cross-Origin-Opener-Policy"] = "same-origin"
+
+    # Restrict browser features the dashboard does not need
+    response.headers["Permissions-Policy"] = (
+        "camera=(), microphone=(), geolocation=(), payment=()"
+    )
+
+    # Content Security Policy — allows only the exact CDN origins the dashboard uses
+    response.headers["Content-Security-Policy"] = (
+        "default-src 'self'; "
+        "script-src 'self' https://cdnjs.cloudflare.com https://cdn.jsdelivr.net; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com https://cdnjs.cloudflare.com; "
+        "font-src 'self' https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-src 'self'; "
+        "frame-ancestors 'self'; "
+        "base-uri 'self'; "
+        "form-action 'self'"
+    )
+
+    # HSTS — enforce HTTPS in production only (avoids breaking local dev over HTTP)
+    if os.getenv("ENV", "development") == "production":
+        response.headers["Strict-Transport-Security"] = (
+            "max-age=63072000; includeSubDomains; preload"
+        )
+
+    return response
+
 @app.middleware("http")
 async def resource_limits_middleware(request: Request, call_next):
     # Payload size limit check
