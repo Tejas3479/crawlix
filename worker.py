@@ -121,9 +121,10 @@ async def process_destinations(results: list, destination_ids: list[str]):
                     logger.info(f"Pushed {len(rows)} rows to Supabase")
                     
             elif dest.type == "weaviate":
+                from urllib.parse import urlparse
+
                 import weaviate
                 from weaviate.classes.init import Auth
-                from urllib.parse import urlparse
                 
                 # Wrap synchronous Weaviate calls to prevent event loop blocking
                 def _push_to_weaviate(target_dest, target_results, target_embeddings):
