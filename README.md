@@ -98,6 +98,8 @@ python -m alembic upgrade head
 API_KEYS=your-secret-key uvicorn app:app --reload
 ```
 
+*(Note: To use background crawling and batch features locally, you must also have Redis running and start the worker in a separate terminal via `arq worker.WorkerSettings`.)*
+
 ---
 
 ## 🔧 Configuration
@@ -175,7 +177,7 @@ flowchart TD
     end
     
     subgraph Storage["State & Persistence"]
-        DB[("PostgreSQL<br/><i>Jobs, API Keys, Proxies</i>")]
+        DB[("PostgreSQL / SQLite<br/><i>Jobs, API Keys, Proxies</i>")]
         REDIS[("Redis<br/><i>ARQ Queue & PubSub</i>")]
     end
 
@@ -184,7 +186,7 @@ flowchart TD
         BATCH["Batch/Crawl Processor"]
     end
 
-    subgraph Engine["Fetch Engine (fetcher.py)"]
+    subgraph Engine["Fetch Engine (services/)"]
         SSRF["SSRF Guard (Async DNS)"]
         ROUTER{"Execution Path"}
         PW["Playwright (Chromium)<br/><i>JS Rendering & Actions</i>"]
