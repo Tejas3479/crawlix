@@ -352,8 +352,11 @@ async def run_batch_crawl_task(
                 session.add(batch)
                 await session.commit()
 
-    with open(export_path, "w", encoding="utf-8") as f:  # noqa: ASYNC230
-        json.dump(aggregated_results, f, indent=2)
+    def _write_export():
+        with open(export_path, "w", encoding="utf-8") as f:
+            json.dump(aggregated_results, f, indent=2)
+            
+    await asyncio.to_thread(_write_export)
 
     async with async_session_maker() as session:
         batch = await session.get(BatchJob, batch_id)
