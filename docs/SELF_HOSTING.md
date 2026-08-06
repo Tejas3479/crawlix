@@ -126,11 +126,15 @@ pip install -r requirements.txt
 playwright install chromium
 playwright install-deps chromium   # Linux only
 
-# 5. Set environment variables and run
+# 5. Set environment variables and run the API
 $env:API_KEYS = "your-secret-key"           # Windows PowerShell
 # export API_KEYS="your-secret-key"         # Linux/Mac
 
 uvicorn app:app --host 0.0.0.0 --port 8000 --reload
+
+# 6. In a separate terminal, ensure Redis is running and start the background worker:
+$env:API_KEYS = "your-secret-key"
+arq worker.WorkerSettings
 ```
 
 Open http://localhost:8000 — the dashboard loads automatically.
@@ -146,9 +150,9 @@ Open http://localhost:8000 — the dashboard loads automatically.
 ### Setup (Ubuntu 22.04)
 
 ```bash
-# Install Python 3.11
+# Install Python 3.11 and Redis
 sudo apt update
-sudo apt install -y python3.11 python3.11-venv python3-pip git
+sudo apt install -y python3.11 python3.11-venv python3-pip git redis-server
 
 # Clone and install
 git clone https://github.com/Tejas3479/crawlix.git
@@ -159,8 +163,8 @@ pip install -r requirements.txt
 playwright install chromium
 playwright install-deps chromium
 
-# Run with systemd (persistent)
-sudo tee /etc/systemd/system/crawlix.service << EOF
+# Run API with systemd (persistent)
+sudo tee /etc/systemd/system/crawlix-api.service << EOF
 [Unit]
 Description=Crawlix Scraping API
 After=network.target
@@ -178,9 +182,27 @@ Restart=on-failure
 WantedBy=multi-user.target
 EOF
 
+# Run Background Worker with systemd
+sudo tee /etc/systemd/system/crawlix-worker.service << EOF
+[Unit]
+Description=Crawlix Background Worker
+After=network.target redis-server.service
+
+[Service]
+Type=simple
+User=$USER
+WorkingDirectory=$PWD
+Environment=API_KEYS=your-secret-key
+ExecStart=$PWD/.venv/bin/arq worker.WorkerSettings
+Restart=on-failure
+
+[Install]
+WantedBy=multi-user.target
+EOF
+
 sudo systemctl daemon-reload
-sudo systemctl enable crawlix
-sudo systemctl start crawlix
+sudo systemctl enable crawlix-api crawlix-worker
+sudo systemctl start crawlix-api crawlix-worker
 ```
 
 ### Nginx reverse proxy (optional)
