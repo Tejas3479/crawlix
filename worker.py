@@ -122,23 +122,45 @@ async def process_destinations(results: list, destination_ids: list[str]):
                     
             elif dest.type == "weaviate":
                 import weaviate
+                from weaviate.classes.init import Auth
+                from urllib.parse import urlparse
+                
                 # Wrap synchronous Weaviate calls to prevent event loop blocking
                 def _push_to_weaviate(target_dest, target_results, target_embeddings):
-                    client = weaviate.Client(url=target_dest.config.get("url", ""), auth_client_secret=weaviate.AuthApiKey(api_key=target_dest.config.get("api_key", "")))
-                    class_name = target_dest.config.get("class_name", "Document")
+                    raw_url = target_dest.config.get("url", "")
+                    api_key = target_dest.config.get("api_key", "")
                     
-                    with client.batch as batch:
-                        for i, r in enumerate(target_results):
-                            properties = {
-                                "content": r.get("content", ""),
-                                "url": r.get("url", ""),
-                                "title": r.get("title", "")
-                            }
-                            vector = target_embeddings[i] if i < len(target_embeddings) and target_embeddings[i] else None
-                            batch.add_data_object(properties, class_name, vector=vector)
+                    parsed = urlparse(raw_url)
+                    host = parsed.hostname or "localhost"
+                    port = parsed.port or (443 if parsed.scheme == "https" else 80)
+                    is_secure = parsed.scheme == "https"
+                    
+                    auth_creds = Auth.api_key(api_key) if api_key else None
+                    
+                    with weaviate.connect_to_custom(
+                        http_host=host,
+                        http_port=port,
+                        http_secure=is_secure,
+                        auth_credentials=auth_creds
+                    ) as client:
+                        class_name = target_dest.config.get("class_name", "Document")
+                        collection = client.collections.get(class_name)
+                        
+                        with collection.batch.dynamic() as batch:
+                            for i, r in enumerate(target_results):
+                                properties = {
+                                    "content": r.get("content", ""),
+                                    "url": r.get("url", ""),
+                                    "title": r.get("title", "")
+                                }
+                                vector = target_embeddings[i] if i < len(target_embeddings) and target_embeddings[i] else None
+                                if vector:
+                                    batch.add_object(properties=properties, vector=vector)
+                                else:
+                                    batch.add_object(properties=properties)
                 
                 await asyncio.to_thread(_push_to_weaviate, dest, results, embeddings)
-                logger.info("Pushed rows to Weaviate")
+                logger.info("Pushed rows to Weaviate (v4 API)")
                     
         except Exception as e:
             logger.error(f"Destination push failed for {dest.name}: {e}")
