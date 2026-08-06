@@ -9,7 +9,6 @@ import logging
 import time
 from contextlib import asynccontextmanager
 
-import redis.asyncio as redis
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
@@ -23,6 +22,7 @@ from fetcher import (
     session_manager,
 )
 from routers import admin_router, crawl_router, fetch_router, health_router
+from services.session_manager import redis_client
 
 # Set up logging configuration with SensitiveDataFilter
 logger = logging.getLogger("crawlix.app")
@@ -40,9 +40,6 @@ RATE_LIMIT_PER_MINUTE = int(os.getenv("RATE_LIMIT_PER_MINUTE", "60"))
 MAX_BODY_SIZE_BYTES = int(
     os.getenv("MAX_REQUEST_BODY_SIZE", str(10 * 1024 * 1024))
 )  # 10MB
-
-REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
-redis_client = redis.from_url(REDIS_URL, decode_responses=True)
 
 
 class RateLimiter:
