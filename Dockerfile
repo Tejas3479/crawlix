@@ -11,6 +11,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
+# Install OS dependencies for playwright
+RUN apt-get update && playwright install-deps && rm -rf /var/lib/apt/lists/*
+
 # Copy the rest of the application
 COPY . .
 
