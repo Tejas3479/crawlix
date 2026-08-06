@@ -2,6 +2,7 @@ import asyncio
 import json
 import os
 import re
+from typing import Any
 from urllib.parse import urljoin
 
 import httpx
@@ -158,7 +159,7 @@ async def process_content(
                 "forms": forms,
                 "text_blocks": text_blocks
             }
-        else:
+        elif output_format == "structured":
             # LLM Structured Mapping Path
             markdown_content = await process_content(
                 html=html,
@@ -184,6 +185,7 @@ async def process_content(
             result = ""
             provider_success = False
             last_err_msg = ""
+            payload: dict[str, Any] = {}
             
             for current_provider in providers_to_try:
                 if provider_success:
@@ -198,7 +200,7 @@ async def process_content(
                         async with httpx.AsyncClient(timeout=60.0) as client:
                             if current_provider == "openai":
                                 target_model = llm_model if current_provider == llm_provider else "gpt-5.6-luna"
-                                headers = {
+                                req_headers = {
                                     "Authorization": f"Bearer {current_key}",
                                     "Content-Type": "application/json"
                                 }
@@ -223,12 +225,12 @@ async def process_content(
                                     payload["response_format"] = {"type": "json_object"}
                                     
                                 logger.info(f"Requesting OpenAI structured outputs using model: {target_model} (attempt {attempt + 1})")
-                                resp = await client.post("https://api.openai.com/v1/chat/completions", headers=headers, json=payload)
+                                resp = await client.post("https://api.openai.com/v1/chat/completions", headers=req_headers, json=payload)
                                 resp.raise_for_status()
                                 result = resp.json()["choices"][0]["message"]["content"]
                             elif current_provider == "anthropic":
                                 target_model = llm_model if current_provider == llm_provider else "claude-opus-5"
-                                headers = {
+                                req_headers = {
                                     "x-api-key": current_key,
                                     "anthropic-version": "2023-06-01",
                                     "Content-Type": "application/json"
@@ -242,13 +244,13 @@ async def process_content(
                                     ]
                                 }
                                 logger.info(f"Requesting Anthropic structured outputs using model: {target_model} (attempt {attempt + 1})")
-                                resp = await client.post("https://api.anthropic.com/v1/messages", headers=headers, json=payload)
+                                resp = await client.post("https://api.anthropic.com/v1/messages", headers=req_headers, json=payload)
                                 resp.raise_for_status()
                                 result = resp.json()["content"][0]["text"]
                             elif current_provider == "gemini":
                                 target_model = llm_model if current_provider == llm_provider else "gemini-3.6-flash"
                                 url = f"https://generativelanguage.googleapis.com/v1beta/models/{target_model}:generateContent?key={current_key}"
-                                headers = {
+                                req_headers = {
                                     "Content-Type": "application/json"
                                 }
                                 payload = {
@@ -298,3 +300,6 @@ async def process_content(
             except Exception as e:
                 logger.error(f"Failed to parse LLM response as JSON: {e}")
                 return {"error": "llm_parse_failed", "raw": result}
+                
+    # Fallback for unknown formats
+    return html

@@ -167,7 +167,7 @@ class CrawlManager:
         CONCURRENCY = 3
         semaphore = asyncio.Semaphore(CONCURRENCY)
         lock = asyncio.Lock()
-        active_tasks = set()
+        active_tasks: set[asyncio.Task] = set()
 
         async def crawl_worker(url, depth):
             nonlocal crawled_count

@@ -2,6 +2,7 @@ import asyncio
 import os
 import time
 from contextlib import asynccontextmanager
+from typing import Any
 
 from playwright.async_api import Browser, async_playwright
 
@@ -79,7 +80,10 @@ class PlaywrightManager:
 
         context = None
         try:
-            context_args = {}
+            if not self.browser:
+                raise RuntimeError("Playwright browser is not initialized.")
+            
+            context_args: dict[str, Any] = {}
             if proxy_url:
                 context_args["proxy"] = {"server": proxy_url}
             
