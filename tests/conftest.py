@@ -13,7 +13,6 @@ os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{test_db}"
 from fakeredis import FakeAsyncRedis
 
 import app
-import fetcher
 
 
 @pytest.fixture(autouse=True)
