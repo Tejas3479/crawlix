@@ -46,8 +46,8 @@ class TwoCaptchaSolver(BaseCaptchaSolver):
             return None
 
     async def _get_result(self, task_id: str, timeout: int = 120) -> str | None:
-        start = asyncio.get_event_loop().time()
-        while asyncio.get_event_loop().time() - start < timeout:
+        start = asyncio.get_running_loop().time()
+        while asyncio.get_running_loop().time() - start < timeout:
             await asyncio.sleep(5)
             try:
                 async with httpx.AsyncClient(timeout=15.0) as client:
@@ -125,8 +125,8 @@ class CapSolver(BaseCaptchaSolver):
                     return None
 
                 # Poll for result
-                start = asyncio.get_event_loop().time()
-                while asyncio.get_event_loop().time() - start < timeout:
+                start = asyncio.get_running_loop().time()
+                while asyncio.get_running_loop().time() - start < timeout:
                     await asyncio.sleep(3)
                     check_res = await client.post(
                         f"{self.BASE_URL}/getTaskResult",

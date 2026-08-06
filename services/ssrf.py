@@ -65,7 +65,7 @@ async def is_ssrf_safe(url: str) -> bool:
             pass
 
         # 4. Async DNS Resolution Check
-        loop = asyncio.get_event_loop()
+        loop = asyncio.get_running_loop()
         addr_info = await loop.run_in_executor(None, socket.getaddrinfo, host_lower, None)
         for _family, _type, _proto, _canonname, sockaddr in addr_info:
             ip_str = sockaddr[0]
