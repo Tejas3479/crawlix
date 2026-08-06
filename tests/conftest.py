@@ -19,6 +19,9 @@ import fetcher
 @pytest.fixture(autouse=True)
 def mock_redis(monkeypatch):
     fake_redis = FakeAsyncRedis(decode_responses=True)
-    monkeypatch.setattr(fetcher, "redis_client", fake_redis)
+    import services.session_manager
+    monkeypatch.setattr(services.session_manager, "redis_client", fake_redis)
     monkeypatch.setattr(app, "redis_client", fake_redis)
+    import routers.health
+    monkeypatch.setattr(routers.health, "redis_client", fake_redis)
     yield fake_redis
