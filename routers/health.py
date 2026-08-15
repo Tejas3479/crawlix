@@ -1,3 +1,5 @@
+import asyncio
+
 from fastapi import APIRouter
 from sqlalchemy import text
 
@@ -17,17 +19,24 @@ async def health():
     except Exception as e:
         db_status = f"error: {e!s}"
 
-    # Check Redis
+    # Check Redis (with 1.0s timeout to prevent hanging when offline)
     redis_status = "ok"
     try:
-        await redis_client.ping()
+        await asyncio.wait_for(redis_client.ping(), timeout=1.0)
     except Exception as e:
         redis_status = f"error: {e!s}"
+
+    # Count active sessions (depends on Redis)
+    active_sessions = 0
+    try:
+        active_sessions = await asyncio.wait_for(session_manager.count_sessions(), timeout=1.0)
+    except Exception:
+        pass
 
     return {
         "status": "ok" if db_status == "ok" and redis_status == "ok" else "degraded",
         "database": db_status,
         "redis": redis_status,
-        "active_sessions": await session_manager.count_sessions(),
+        "active_sessions": active_sessions,
         "playwright_slots_free": playwright_mgr.slots_free,
     }
