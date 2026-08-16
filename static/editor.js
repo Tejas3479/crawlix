@@ -55,7 +55,7 @@ export function createKvRow(containerId, key = "", value = "") {
   row.innerHTML = `
     <input type="text" class="kv-key-input" placeholder="Key" value="${escapeHtml(key)}" aria-label="Header or Cookie Key" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
     <input type="text" class="kv-value-input" placeholder="Value" value="${escapeHtml(value)}" aria-label="Header or Cookie Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-    <button class="remove-kv-btn icon-btn" aria-label="Remove item" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);">✕</button>
+    <button class="remove-kv-btn icon-btn" aria-label="Remove item" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
   `;
 
   row.querySelector(".remove-kv-btn").addEventListener("click", () => {
@@ -238,71 +238,83 @@ export function setupOutputFormatToggle() {
   }
 }
 
+export function createActionRow(action = {}) {
+  const row = document.createElement("div");
+  row.className = "action-row";
+  row.style.display = "flex";
+  row.style.gap = "8px";
+  row.style.alignItems = "center";
+  row.style.background = "rgba(255,255,255,0.02)";
+  row.style.padding = "8px";
+  row.style.borderRadius = "6px";
+  row.style.border = "1px solid rgba(255,255,255,0.06)";
+
+  row.innerHTML = `
+    <select class="action-type-select" aria-label="Action Type" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; cursor:pointer; width:100px; flex-shrink:0;">
+      <option value="click">Click</option>
+      <option value="fill">Fill Input</option>
+      <option value="wait">Wait</option>
+      <option value="scroll">Scroll</option>
+      <option value="hover">Hover</option>
+      <option value="press">Press Key</option>
+    </select>
+    <input type="text" class="action-selector-input" placeholder="CSS Selector" aria-label="Action CSS Selector" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+    <input type="text" class="action-value-input" placeholder="Value (for Fill/Press)" aria-label="Action Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+    <input type="number" class="action-duration-input hidden" placeholder="Seconds" aria-label="Action Duration in Seconds" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; width:70px; flex-shrink:0;">
+    <button class="remove-action-btn icon-btn" aria-label="Remove browser action" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+  `;
+
+  const typeSelect = row.querySelector(".action-type-select");
+  const selectorInput = row.querySelector(".action-selector-input");
+  const valueInput = row.querySelector(".action-value-input");
+  const durationInput = row.querySelector(".action-duration-input");
+
+  if (action.type) typeSelect.value = action.type;
+  if (action.selector) selectorInput.value = action.selector;
+  if (action.value) valueInput.value = action.value;
+  if (action.duration) durationInput.value = action.duration;
+
+  const updateFields = () => {
+    const val = typeSelect.value;
+    if (val === "wait") {
+      selectorInput.classList.add("hidden");
+      valueInput.classList.add("hidden");
+      durationInput.classList.remove("hidden");
+    } else if (val === "scroll") {
+      selectorInput.classList.remove("hidden");
+      selectorInput.placeholder = "CSS Selector (Optional)";
+      valueInput.classList.add("hidden");
+      durationInput.classList.add("hidden");
+    } else if (val === "click" || val === "hover") {
+      selectorInput.classList.remove("hidden");
+      selectorInput.placeholder = "CSS Selector";
+      valueInput.classList.add("hidden");
+      durationInput.classList.add("hidden");
+    } else if (val === "fill" || val === "press") {
+      selectorInput.classList.remove("hidden");
+      selectorInput.placeholder = "CSS Selector";
+      valueInput.classList.remove("hidden");
+      durationInput.classList.add("hidden");
+    }
+  };
+
+  typeSelect.addEventListener("change", updateFields);
+  updateFields();
+
+  row.querySelector(".remove-action-btn").addEventListener("click", () => {
+    row.remove();
+  });
+
+  return row;
+}
+
 export function setupActionBuilder() {
   const addBtn = document.getElementById("add-action-btn");
   const listContainer = document.getElementById("actions-list");
   if (!addBtn || !listContainer) return;
 
   addBtn.addEventListener("click", () => {
-    const row = document.createElement("div");
-    row.className = "action-row";
-    row.style.display = "flex";
-    row.style.gap = "8px";
-    row.style.alignItems = "center";
-    row.style.background = "rgba(255,255,255,0.02)";
-    row.style.padding = "8px";
-    row.style.borderRadius = "6px";
-    row.style.border = "1px solid rgba(255,255,255,0.06)";
-
-    row.innerHTML = `
-      <select class="action-type-select" aria-label="Action Type" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; cursor:pointer; width:100px; flex-shrink:0;">
-        <option value="click">Click</option>
-        <option value="fill">Fill Input</option>
-        <option value="wait">Wait</option>
-        <option value="scroll">Scroll</option>
-        <option value="hover">Hover</option>
-        <option value="press">Press Key</option>
-      </select>
-      <input type="text" class="action-selector-input" placeholder="CSS Selector" aria-label="Action CSS Selector" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-      <input type="text" class="action-value-input" placeholder="Value (for Fill/Press)" aria-label="Action Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-      <input type="number" class="action-duration-input hidden" placeholder="Seconds" aria-label="Action Duration in Seconds" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; width:70px; flex-shrink:0;">
-      <button class="remove-action-btn icon-btn" aria-label="Remove browser action" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);">✕</button>
-    `;
-
-    const typeSelect = row.querySelector(".action-type-select");
-    const selectorInput = row.querySelector(".action-selector-input");
-    const valueInput = row.querySelector(".action-value-input");
-    const durationInput = row.querySelector(".action-duration-input");
-
-    typeSelect.addEventListener("change", () => {
-      const val = typeSelect.value;
-      if (val === "wait") {
-        selectorInput.classList.add("hidden");
-        valueInput.classList.add("hidden");
-        durationInput.classList.remove("hidden");
-      } else if (val === "scroll") {
-        selectorInput.classList.remove("hidden");
-        selectorInput.placeholder = "CSS Selector (Optional)";
-        valueInput.classList.add("hidden");
-        durationInput.classList.add("hidden");
-      } else if (val === "click" || val === "hover") {
-        selectorInput.classList.remove("hidden");
-        selectorInput.placeholder = "CSS Selector";
-        valueInput.classList.add("hidden");
-        durationInput.classList.add("hidden");
-      } else if (val === "fill" || val === "press") {
-        selectorInput.classList.remove("hidden");
-        selectorInput.placeholder = "CSS Selector";
-        valueInput.classList.remove("hidden");
-        durationInput.classList.add("hidden");
-      }
-    });
-
-    row.querySelector(".remove-action-btn").addEventListener("click", () => {
-      row.remove();
-    });
-
-    listContainer.appendChild(row);
+    listContainer.appendChild(createActionRow());
   });
 }
 
@@ -354,15 +366,15 @@ export function envRender() {
     if (keys.length === 0) {
       chipsEl.innerHTML = "";
     } else {
-      chipsEl.innerHTML = keys.map((k, i) => \`
-        <span class="env-chip \${k.value === state.apiKey ? 'env-chip-active' : ''}"
-              data-index="\${i}" title="\${escapeHtml(k.label)}" role="button" tabindex="0"
-              aria-label="Switch active key to \${escapeHtml(k.label)}"
-              aria-pressed="\${k.value === state.apiKey}">
+      chipsEl.innerHTML = keys.map((k, i) => `
+        <span class="env-chip ${k.value === state.apiKey ? 'env-chip-active' : ''}"
+              data-index="${i}" title="${escapeHtml(k.label)}" role="button" tabindex="0"
+              aria-label="Switch active key to ${escapeHtml(k.label)}"
+              aria-pressed="${k.value === state.apiKey}">
           <span class="env-chip-dot" aria-hidden="true"></span>
-          \${escapeHtml(k.label)}
+          ${escapeHtml(k.label)}
         </span>
-      \`).join("");
+      `).join("");
 
       chipsEl.querySelectorAll(".env-chip").forEach(chip => {
         const activateChip = () => {
@@ -370,7 +382,7 @@ export function envRender() {
           if (key) {
             envApplyKey(key.value);
             envRender();
-            showToast(\`Active key: \${key.label}\`, "success", 1800);
+            showToast(`Active key: ${key.label}`, "success", 1800);
           }
         };
         chip.addEventListener("click", activateChip);
@@ -388,15 +400,15 @@ export function envRender() {
     if (keys.length === 0) {
       listEl.innerHTML = '<div style="font-size:11px; color:var(--text-tertiary); padding:4px 0;">No saved keys yet.</div>';
     } else {
-      listEl.innerHTML = keys.map((k, i) => \`
-        <div class="env-saved-row" data-index="\${i}" role="listitem">
-          <span class="env-saved-label" title="\${escapeHtml(k.label)}">\${escapeHtml(k.label)}</span>
-          <span class="env-saved-masked" aria-label="Masked key value">\${envMaskKey(k.value)}</span>
-          <button class="env-use-btn \${k.value === state.apiKey ? 'env-use-active' : ''}"
-                  data-index="\${i}" aria-label="Use key \${escapeHtml(k.label)}">\${k.value === state.apiKey ? '✓ Active' : 'Use'}</button>
-          <button class="env-delete-btn" data-index="\${i}" title="Delete" aria-label="Delete key \${escapeHtml(k.label)}">✕</button>
+      listEl.innerHTML = keys.map((k, i) => `
+        <div class="env-saved-row" data-index="${i}" role="listitem">
+          <span class="env-saved-label" title="${escapeHtml(k.label)}">${escapeHtml(k.label)}</span>
+          <span class="env-saved-masked" aria-label="Masked key value">${envMaskKey(k.value)}</span>
+          <button class="env-use-btn ${k.value === state.apiKey ? 'env-use-active' : ''}"
+                  data-index="${i}" aria-label="Use key ${escapeHtml(k.label)}">${k.value === state.apiKey ? '<svg class="icon" aria-hidden="true"><use href="#icon-check"/></svg>Active' : 'Use'}</button>
+          <button class="env-delete-btn" data-index="${i}" title="Delete" aria-label="Delete key ${escapeHtml(k.label)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
         </div>
-      \`).join("");
+      `).join("");
 
       listEl.querySelectorAll(".env-use-btn").forEach(btn => {
         btn.addEventListener("click", () => {
@@ -404,7 +416,7 @@ export function envRender() {
           if (key) {
             envApplyKey(key.value);
             envRender();
-            showToast(\`Active key: \${key.label}\`, "success", 1800);
+            showToast(`Active key: ${key.label}`, "success", 1800);
           }
         });
       });
@@ -413,7 +425,7 @@ export function envRender() {
         btn.addEventListener("click", () => {
           const idx = parseInt(btn.dataset.index, 10);
           const key = keys[idx];
-          if (!confirm(\`Delete key "\${key.label}"?\`)) return;
+          if (!confirm(`Delete key "${key.label}"?`)) return;
           keys.splice(idx, 1);
           envSaveKeys(keys);
           if (key.value === state.apiKey) {
@@ -452,7 +464,7 @@ export function setupEnvPanel() {
 
     const keys = envLoadKeys();
     if (keys.some(k => k.label.toLowerCase() === label.toLowerCase())) {
-      showToast(\`A key named "\${label}" already exists\`, "error", 2000);
+      showToast(`A key named "${label}" already exists`, "error", 2000);
       return;
     }
     keys.push({ label, value, createdAt: new Date().toISOString() });
@@ -460,7 +472,7 @@ export function setupEnvPanel() {
     if (labelInput) labelInput.value = "";
     if (valueInput) valueInput.value = "";
     envRender();
-    showToast(\`Saved key: \${label}\`, "success", 2000);
+    showToast(`Saved key: ${label}`, "success", 2000);
   };
 
   if (addBtn) addBtn.addEventListener("click", doAdd);
@@ -497,7 +509,51 @@ export function restoreBuilderStateUI(savedRequest) {
   document.getElementById("stealth-checkbox").checked = !!savedRequest.stealth;
   document.getElementById("scroll-checkbox").checked = !!savedRequest.scroll;
   document.getElementById("strip-links-checkbox").checked = !!savedRequest.strip_links;
-  
+  document.getElementById("screenshot-checkbox").checked = !!savedRequest.screenshot;
+
+  const waitUntilSelect = document.getElementById("wait-until-select");
+  if (waitUntilSelect && savedRequest.wait_until) waitUntilSelect.value = savedRequest.wait_until;
+
+  const headerContainer = document.getElementById("headers-list");
+  if (headerContainer) {
+    headerContainer.innerHTML = "";
+    Object.entries(savedRequest.headers || {}).forEach(([k, v]) => createKvRow("headers-list", k, v));
+  }
+
+  const cookieContainer = document.getElementById("cookies-list");
+  if (cookieContainer) {
+    cookieContainer.innerHTML = "";
+    Object.entries(savedRequest.cookies || {}).forEach(([k, v]) => createKvRow("cookies-list", k, v));
+  }
+
+  const cssInput = document.getElementById("css-selector-input");
+  if (cssInput) cssInput.value = savedRequest.css_selector || "";
+
+  const waitSelectorInput = document.getElementById("wait-selector-input");
+  if (waitSelectorInput) waitSelectorInput.value = savedRequest.wait_for_selector || "";
+
+  const llmModelInput = document.getElementById("llm-model-input");
+  if (llmModelInput) llmModelInput.value = savedRequest.llm_model || "";
+
+  const proxyInput = document.getElementById("proxy-input");
+  if (proxyInput) proxyInput.value = (savedRequest.proxy && savedRequest.proxy.url) ? savedRequest.proxy.url : "";
+
+  const schemaInput = document.getElementById("json-schema-textarea");
+  if (schemaInput && savedRequest.json_schema) {
+    schemaInput.value = typeof savedRequest.json_schema === "string"
+      ? savedRequest.json_schema
+      : JSON.stringify(savedRequest.json_schema, null, 2);
+  }
+
+  const promptInput = document.getElementById("extraction-prompt-textarea");
+  if (promptInput) promptInput.value = savedRequest.extraction_prompt || "";
+
+  const actionsList = document.getElementById("actions-list");
+  if (actionsList) {
+    actionsList.innerHTML = "";
+    (savedRequest.actions || []).forEach(action => actionsList.appendChild(createActionRow(action)));
+  }
+
   const formatSelect = document.getElementById("output-format-select");
   if (formatSelect) {
     formatSelect.value = savedRequest.output_format || "markdown";

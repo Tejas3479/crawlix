@@ -21,6 +21,8 @@ if "sqlite" not in DATABASE_URL:
         "pool_pre_ping": True,
         "pool_recycle": 300,
     })
+else:
+    _engine_kwargs["connect_args"] = {"timeout": 30.0}
 
 engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
 async_session_maker = sessionmaker(

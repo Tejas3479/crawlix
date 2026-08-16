@@ -1,5 +1,5 @@
 import { state, API_BASE } from './state.js';
-import { timeAgo, escapeHtml, showToast, animateListItems, animateModalOpen, getMotion } from './ui.js';
+import { timeAgo, escapeHtml, showToast, animateListItems, animateModalOpen, getMotion, renderSkeletonCards, focusModal, blurModal } from './ui.js';
 import { isValidHttpUrl } from './editor.js';
 // We will rely on custom events or app.js exports for tab switching, 
 // to avoid circular imports.
@@ -70,6 +70,8 @@ function renderCrawlResultsTable(page = 1) {
       
       document.getElementById("nav-builder").click();
       document.getElementById("response-panel").classList.remove("hidden");
+      document.getElementById("response-loading")?.classList.add("hidden");
+      document.getElementById("response-error")?.classList.add("hidden");
       switchTab("preview");
       showToast("Loaded page details in Request Builder", "info", 2000);
     });
@@ -83,8 +85,8 @@ function renderCrawlResultsTable(page = 1) {
       paginationControls.innerHTML = `
         <div>Page <b>${p}</b> of <b>${totalPages}</b> (${results.length} total pages)</div>
         <div style="display:flex; gap:8px;">
-          <button id="crawl-page-prev" class="icon-btn" style="padding:4px 10px; font-size:12px;" ${p === 1 ? "disabled" : ""}>◀ Prev</button>
-          <button id="crawl-page-next" class="icon-btn" style="padding:4px 10px; font-size:12px;" ${p === totalPages ? "disabled" : ""}>Next ▶</button>
+          <button id="crawl-page-prev" class="icon-btn" style="padding:4px 10px; font-size:12px;" ${p === 1 ? "disabled" : ""}><svg class="icon" aria-hidden="true"><use href="#icon-chevron-left"/></svg><span>Prev</span></button>
+          <button id="crawl-page-next" class="icon-btn" style="padding:4px 10px; font-size:12px;" ${p === totalPages ? "disabled" : ""}><span>Next</span><svg class="icon" aria-hidden="true"><use href="#icon-chevron-right"/></svg></button>
         </div>
       `;
       const prevBtn = document.getElementById("crawl-page-prev");
@@ -95,9 +97,13 @@ function renderCrawlResultsTable(page = 1) {
   }
 }
 
-export async function renderCrawls() {
+export async function renderCrawls(animate = true) {
   const grid = document.getElementById("crawl-history-grid");
   if (!grid) return;
+
+  if (animate && !grid.querySelector(".session-card")) {
+    grid.innerHTML = renderSkeletonCards(3);
+  }
 
   try {
     const headers = {};
@@ -116,8 +122,8 @@ export async function renderCrawls() {
     }
 
     grid.innerHTML = crawls.map(c => {
-      const pagesCrawled = c.stats?.pages_crawled ?? 0;
-      const pct = Math.round((pagesCrawled / c.max_pages) * 100);
+      const pagesCrawled = c.pages_crawled ?? c.stats?.pages_crawled ?? 0;
+      const pct = c.max_pages > 0 ? Math.round((pagesCrawled / c.max_pages) * 100) : 0;
       let statusClass = "engine-curl";
       if (c.status === "running") statusClass = "engine-playwright";
       else if (c.status === "failed") statusClass = "status-offline";
@@ -135,7 +141,7 @@ export async function renderCrawls() {
             <span>Pages: ${pagesCrawled} / ${c.max_pages}</span>
             <span>${timeAgo(c.created_at)}</span>
           </div>
-          <button class="delete-crawl-btn" data-crawl-id="${c.crawl_id}" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--text-tertiary); cursor:pointer; font-size:14px;">✕</button>
+          <button class="delete-crawl-btn" data-crawl-id="${c.crawl_id}" aria-label="Delete crawl" style="position:absolute; top:12px; right:12px; background:transparent; border:none; color:var(--text-tertiary); cursor:pointer; font-size:14px;"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
         </div>
       `;
     }).join("");
@@ -169,8 +175,16 @@ export async function renderCrawls() {
         }
       });
     });
-    animateListItems("#crawls-list > .crawl-card");
+    if (animate) animateListItems("#crawl-history-grid > .crawl-card");
   } catch (err) {
+    grid.innerHTML = `
+      <div class="error-state-container">
+        <span class="error-icon"><svg class="icon" aria-hidden="true"><use href="#icon-alert"/></svg></span>
+        <span>${escapeHtml(err.message || "Error loading crawls")}</span>
+        <button class="error-retry-btn" id="crawls-retry-btn"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg><span>Retry</span></button>
+      </div>`;
+    const retryBtn = document.getElementById("crawls-retry-btn");
+    if (retryBtn) retryBtn.addEventListener("click", () => renderCrawls());
     showToast("Error loading crawls: " + (err.message || "Network error"), "error");
   }
 }
@@ -257,7 +271,7 @@ export async function startCrawlJob() {
 export function setupCrawlPolling() {
   if (activeCrawlPollInterval) clearInterval(activeCrawlPollInterval);
   activeCrawlPollInterval = setInterval(async () => {
-    await renderCrawls();
+    await renderCrawls(false);
     
     const hasRunning = state.crawls.some(c => c.status === "running");
     if (!hasRunning) {
@@ -305,8 +319,9 @@ export async function viewCrawlDetails(crawlId, silent = false) {
       <tr>
         <td colspan="4">
           <div class="error-state-container">
-            <span>⚠️ ${escapeHtml(msg)}</span>
-            <button class="error-retry-btn" onclick="viewCrawlDetails('${crawlId}')">🔄 Retry</button>
+            <span class="error-icon"><svg class="icon" aria-hidden="true"><use href="#icon-alert"/></svg></span>
+            <span>${escapeHtml(msg)}</span>
+            <button class="error-retry-btn" onclick="viewCrawlDetails('${crawlId}')"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg><span>Retry</span></button>
           </div>
         </td>
       </tr>`;
@@ -378,7 +393,7 @@ export function setupCrawlDownload() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `crawl-results-${crawl.crawl_id.slice(0, 8)}.json`;
+    a.download = `crawl-results-${(crawl.id || crawl.crawl_id).slice(0, 8)}.json`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -411,7 +426,7 @@ export function setupCrawlCsvDownload() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `crawl-results-${crawl.crawl_id.slice(0, 8)}.csv`;
+    a.download = `crawl-results-${(crawl.id || crawl.crawl_id).slice(0, 8)}.csv`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -431,9 +446,11 @@ export function setupCrawlScheduling() {
   schedBtn.addEventListener("click", () => {
     modal.classList.remove("hidden");
     animateModalOpen(modal, modal.querySelector(".lightbox-content"));
+    focusModal(modal, { focusTarget: document.getElementById("schedule-cron-input") });
   });
   
   const closeModal = () => {
+    blurModal(modal, { restoreFocus: true });
     const Motion = getMotion();
     if (Motion && typeof Motion.animate === "function") {
       Motion.animate(modal, { opacity: 0 }, { duration: 0.18 }).finished.then(() => {
@@ -443,6 +460,10 @@ export function setupCrawlScheduling() {
       modal.classList.add("hidden");
     }
   };
+
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape" && !modal.classList.contains("hidden")) closeModal();
+  });
 
   cancelBtn.addEventListener("click", closeModal);
   
@@ -508,6 +529,7 @@ export function setupCrawlScheduling() {
       }
       
       showToast("Crawl scheduled successfully!", "success", 2000);
+      blurModal(modal, { restoreFocus: true });
       modal.classList.add("hidden");
     } catch(err) {
       showToast("Schedule error: " + (err.message || "Connection failed"), "error");

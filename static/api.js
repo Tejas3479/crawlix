@@ -95,13 +95,13 @@ export function downloadSessionsCsv(sessions) {
   }
   let csvContent = "Session ID,Engine,Requests,Cookies,Created At,Last Active\n";
   sessions.forEach(s => {
-    csvContent += \`"\${s.session_id}","\${s.engine}",\${s.request_count},\${s.cookie_count},"\${s.created_at}","\${s.last_active}"\n\`;
+    csvContent += `"${s.session_id}","${s.engine}",${s.request_count},${s.cookie_count},"${s.created_at}","${s.last_active}"\n`;
   });
   const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = \`crawlix-sessions-\${Date.now()}.csv\`;
+  a.download = `crawlix-sessions-${Date.now()}.csv`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);
@@ -119,7 +119,7 @@ export function downloadSessionsJson(sessions) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = \`crawlix-sessions-\${Date.now()}.json\`;
+  a.download = `crawlix-sessions-${Date.now()}.json`;
   document.body.appendChild(a);
   a.click();
   document.body.removeChild(a);

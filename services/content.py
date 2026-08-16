@@ -269,7 +269,7 @@ async def process_content(
                                     payload["generationConfig"]["responseSchema"] = json_schema
                                     
                                 logger.info(f"Requesting Gemini structured outputs using model: {target_model} (attempt {attempt + 1})")
-                                resp = await client.post(url, headers=headers, json=payload)
+                                resp = await client.post(url, headers=req_headers, json=payload)
                                 resp.raise_for_status()
                                 result = resp.json()["candidates"][0]["content"]["parts"][0]["text"]
                         provider_success = True

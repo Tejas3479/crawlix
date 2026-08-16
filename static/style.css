@@ -14,7 +14,7 @@
   --card-border: rgba(255, 255, 255, 0.09);
   --text-primary: #e2e2e2;
   --text-secondary: #9a9a9a;
-  --text-tertiary: #6a6a6a;
+  --text-tertiary: #878787;
 }
 
 * {
@@ -26,9 +26,25 @@
 
 /* Keyboard accessibility: restore focus rings for keyboard navigation */
 *:focus-visible {
-  outline: 2px solid var(--accent-color);
-  outline-offset: 2px;
-}
+    outline: 2px solid var(--accent, #6366f1);
+    outline-offset: 2px;
+    border-radius: 4px;
+  }
+
+  .icon {
+    width: 14px;
+    height: 14px;
+    display: inline-block;
+    vertical-align: -2px;
+    flex-shrink: 0;
+    stroke-width: 2;
+  }
+  button .icon,
+  .btn .icon,
+  a .icon,
+  .icon-btn .icon {
+    pointer-events: none;
+  }
 
 /* Screen-reader-only utility */
 .sr-only {
@@ -719,6 +735,9 @@ pre code {
   padding: 6px 12px;
   cursor: pointer;
   transition: all 0.15s ease;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 
 .icon-btn:hover {
@@ -1025,6 +1044,9 @@ input, select, textarea {
   transition: all 0.15s ease;
   float: right;
   margin-bottom: 8px;
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
 }
 .preview-theme-btn:hover {
   color: var(--text-primary);

@@ -1,5 +1,145 @@
 import { state } from './state.js';
-import { showToast, escapeHtml, animateListItems } from './ui.js';
+import { showToast, escapeHtml, animateListItems, renderSkeletonRows } from './ui.js';
+
+const BATCH_STORAGE_KEY = "crawlix_active_batch";
+const BATCH_POLL_MS = 2000;
+let batchPollTimer = null;
+
+function saveActiveBatch(id, totalUrls) {
+  try {
+    localStorage.setItem(BATCH_STORAGE_KEY, JSON.stringify({ id, total_urls: totalUrls }));
+  } catch (e) { /* ignore */ }
+}
+
+function loadActiveBatch() {
+  try {
+    const raw = localStorage.getItem(BATCH_STORAGE_KEY);
+    if (raw) return JSON.parse(raw);
+  } catch (e) { /* ignore */ }
+  return null;
+}
+
+function stopBatchPolling() {
+  if (batchPollTimer) {
+    clearInterval(batchPollTimer);
+    batchPollTimer = null;
+  }
+}
+
+function renderBatchStatus(batchId, data) {
+  const statusDiv = document.getElementById("admin-batch-status");
+  if (!statusDiv) return;
+
+  const status = data.status || "unknown";
+  const total = data.total_urls || 0;
+  const processed = data.processed_urls || 0;
+  const pct = total > 0 ? Math.min(100, Math.round((processed / total) * 100)) : 0;
+
+  const labels = {
+    pending: "Queued",
+    processing: "Running",
+    completed: "Completed",
+    failed: "Failed",
+    error: "Error"
+  };
+  const label = labels[status] || status;
+  const isBad = status === "failed" || status === "error";
+
+  let progressHtml = "";
+  if (status === "pending" || status === "processing" || status === "completed") {
+    progressHtml = `
+      <div style="margin-top:10px;">
+        <div style="display:flex; justify-content:space-between; font-size:12px; color:var(--text-secondary); margin-bottom:4px;">
+          <span>Progress</span>
+          <span>${processed} / ${total} URLs</span>
+        </div>
+        <div style="background:rgba(255,255,255,0.06); height:6px; border-radius:3px; overflow:hidden;">
+          <div style="width:${pct}%; height:100%; background:var(--accent-color); transition:width 0.3s ease;"></div>
+        </div>
+      </div>`;
+  }
+
+  let downloadHtml = "";
+  if (status === "completed") {
+    downloadHtml = `
+      <button id="admin-batch-download-btn" class="icon-btn" style="margin-top:10px;" aria-label="Download batch results as JSON"><svg class="icon" aria-hidden="true"><use href="#icon-download"/></svg><span>Download results</span></button>`;
+  }
+
+  let errorHtml = "";
+  if (isBad && data.error_message) {
+    errorHtml = `<div style="margin-top:8px; font-size:12px; color:var(--danger-color);">${escapeHtml(data.error_message)}</div>`;
+  }
+
+  statusDiv.innerHTML = `
+    <div style="font-size:12px; color:var(--text-secondary);">
+      Batch <b style="color:var(--text-primary);">${escapeHtml(batchId)}</b> — <span style="color:${isBad ? 'var(--danger-color)' : 'var(--text-primary)'};">${escapeHtml(label)}</span>
+    </div>
+    ${progressHtml}
+    ${downloadHtml}
+    ${errorHtml}
+  `;
+
+  const downloadBtn = document.getElementById("admin-batch-download-btn");
+  if (downloadBtn) {
+    downloadBtn.addEventListener("click", async () => {
+      try {
+        const headers = {};
+        if (state.apiKey) headers["x-api-key"] = state.apiKey;
+        const res = await fetch(`/api/crawl/batch/${batchId}/download`, { headers });
+        if (!res.ok) {
+          const err = await res.json().catch(() => ({}));
+          showToast("Download failed: " + (err.detail || res.statusText), "error");
+          return;
+        }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement("a");
+        a.href = url;
+        a.download = `batch-${batchId}.json`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        URL.revokeObjectURL(url);
+        showToast("Batch results downloaded!", "success", 1500);
+      } catch (err) {
+        showToast("Download error: " + (err.message || "Network error"), "error");
+      }
+    });
+  }
+}
+
+async function pollBatchStatus(batchId) {
+  stopBatchPolling();
+  let done = false;
+
+  const tick = async () => {
+    if (done) return;
+    try {
+      const headers = {};
+      if (state.apiKey) headers["x-api-key"] = state.apiKey;
+      const res = await fetch(`/api/crawl/batch/${batchId}`, { headers });
+      if (!res.ok) {
+        done = true;
+        stopBatchPolling();
+        renderBatchStatus(batchId, { status: "error", error_message: `HTTP ${res.status}` });
+        return;
+      }
+      const data = await res.json();
+      renderBatchStatus(batchId, data);
+      if (data.status === "completed" || data.status === "failed") {
+        done = true;
+        stopBatchPolling();
+      }
+    } catch (err) {
+      done = true;
+      stopBatchPolling();
+      renderBatchStatus(batchId, { status: "error", error_message: err.message || "Network error" });
+    }
+  };
+
+  await tick();
+  if (!done) batchPollTimer = setInterval(tick, BATCH_POLL_MS);
+}
 
 export function initAdmin() {
   const refreshBtn = document.getElementById("admin-refresh-btn");
@@ -97,7 +237,6 @@ export function initAdmin() {
     batchStartBtn.addEventListener("click", async () => {
       const fileInput = document.getElementById("admin-batch-file");
       const webhookInput = document.getElementById("admin-batch-webhook");
-      const statusDiv = document.getElementById("admin-batch-status");
 
       if (!fileInput || !fileInput.files || fileInput.files.length === 0) {
         showToast("Please select a CSV or TXT file first", "error");
@@ -125,9 +264,13 @@ export function initAdmin() {
         }
         const data = await res.json();
         showToast("Batch job started! ID: " + data.batch_id, "success");
-        if (statusDiv) {
-          statusDiv.innerHTML = `✅ Batch Job Started: <b>${escapeHtml(data.batch_id)}</b> (${data.total_urls} URLs)`;
-        }
+        saveActiveBatch(data.batch_id, data.total_urls);
+        renderBatchStatus(data.batch_id, {
+          status: "pending",
+          total_urls: data.total_urls,
+          processed_urls: 0
+        });
+        pollBatchStatus(data.batch_id);
         fileInput.value = "";
       } catch (err) {
         showToast("Failed to start batch crawl: " + err.message, "error");
@@ -171,6 +314,17 @@ export function initAdmin() {
 export async function renderAdmin() {
   const adminSec = document.getElementById("admin-section");
   adminSec?.setAttribute("aria-busy", "true");
+
+  const storedBatch = loadActiveBatch();
+  if (storedBatch && storedBatch.id) {
+    renderBatchStatus(storedBatch.id, {
+      status: "pending",
+      total_urls: storedBatch.total_urls || 0,
+      processed_urls: 0
+    });
+    pollBatchStatus(storedBatch.id);
+  }
+
   try {
     const headers = {};
     if (state.apiKey) headers["x-api-key"] = state.apiKey;
@@ -178,6 +332,7 @@ export async function renderAdmin() {
     // Load Destinations
     const destList = document.getElementById("admin-dest-list");
     if (destList) {
+      destList.innerHTML = renderSkeletonRows(3);
       try {
         const res = await fetch("/api/destinations", { headers });
         if (!res.ok) {
@@ -194,7 +349,7 @@ export async function renderAdmin() {
                 <b style="color:var(--text-primary); font-size:13px;">${escapeHtml(d.name)}</b>
                 <span style="color:var(--accent); font-size:11px; margin-left:6px;">(${escapeHtml(d.type)})</span>
               </div>
-              <button class="delete-dest-btn icon-btn" data-id="${d.id}" style="color:#ef4444;" title="Delete">✕</button>
+              <button class="delete-dest-btn icon-btn" data-id="${d.id}" style="color:#ef4444;" title="Delete" aria-label="Delete destination ${escapeHtml(d.name)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
             </div>
           `).join("");
 
@@ -223,6 +378,7 @@ export async function renderAdmin() {
     // Load Schedules
     const schedList = document.getElementById("admin-sched-list");
     if (schedList) {
+      schedList.innerHTML = renderSkeletonRows(3);
       try {
         const res = await fetch("/api/schedule", { headers });
         if (!res.ok) {
@@ -239,7 +395,7 @@ export async function renderAdmin() {
                 <b style="color:var(--text-primary); font-size:13px;">${escapeHtml((s.payload && s.payload.url) || 'Schedule')}</b>
                 <span style="color:var(--accent); font-size:11px; margin-left:6px;">[${escapeHtml(s.cron_expression)}]</span>
               </div>
-              <button class="delete-sched-btn icon-btn" data-id="${s.id}" style="color:#ef4444;" title="Delete">✕</button>
+              <button class="delete-sched-btn icon-btn" data-id="${s.id}" style="color:#ef4444;" title="Delete" aria-label="Delete schedule ${escapeHtml((s.payload && s.payload.url) || s.id)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
             </div>
           `).join("");
 
@@ -268,6 +424,7 @@ export async function renderAdmin() {
     // Load Proxies
     const proxyList = document.getElementById("admin-proxy-list");
     if (proxyList) {
+      proxyList.innerHTML = renderSkeletonRows(3);
       try {
         const res = await fetch("/api/proxies", { headers });
         if (!res.ok) {
@@ -286,7 +443,7 @@ export async function renderAdmin() {
                   ${p.is_active ? 'Active' : 'Inactive'} (Fails: ${p.fail_count})
                 </span>
               </div>
-              <button class="delete-proxy-btn icon-btn" data-id="${p.id}" style="color:#ef4444;" title="Delete">✕</button>
+              <button class="delete-proxy-btn icon-btn" data-id="${p.id}" style="color:#ef4444;" title="Delete" aria-label="Delete proxy ${escapeHtml(p.url)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
             </div>
           `).join("");
 
@@ -312,7 +469,7 @@ export async function renderAdmin() {
       }
     }
   } finally {
-    animateListItems("#admin-destinations-list > div, #admin-schedules-list > div, #admin-proxies-list > div");
+    animateListItems("#admin-dest-list > div, #admin-sched-list > div, #admin-proxy-list > div");
     adminSec?.setAttribute("aria-busy", "false");
   }
 }

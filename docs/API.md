@@ -115,19 +115,20 @@ Actions are executed in order before content is extracted. Each action is an obj
 
 ```json
 { "type": "click", "selector": "#load-more" }
-{ "type": "type",  "selector": "#search", "value": "hello" }
+{ "type": "fill",  "selector": "#search", "value": "hello" }
 { "type": "scroll", "selector": null }
-{ "type": "wait",  "selector": ".results", "duration": 2000 }
+{ "type": "wait",  "selector": ".results", "duration": 2 }
 { "type": "hover", "selector": ".menu-item" }
 ```
 
 | Type | Required fields | Description |
 |------|----------------|-------------|
 | `click` | `selector` | Click an element |
-| `type` | `selector`, `value` | Type text into an input |
-| `scroll` | — | Scroll to bottom of page |
-| `wait` | `selector` or `duration` | Wait for selector or N milliseconds |
+| `fill` | `selector`, `value` | Type text into an input |
+| `scroll` | — | Scroll to bottom of page (or into view if `selector` given) |
+| `wait` | `selector` or `duration` | Wait for selector, or pause for `duration` **seconds** |
 | `hover` | `selector` | Hover over an element |
+| `press` | `selector`, `value` | Press a key (e.g. `Enter`) while focused on `selector` |
 
 ### Response
 
@@ -219,8 +220,7 @@ Start an asynchronous site crawl. Returns a `crawl_id` to poll for results.
 ```json
 {
   "crawl_id": "abc123",
-  "status": "running",
-  "message": "Crawl started"
+  "status": "running"
 }
 ```
 
@@ -268,24 +268,31 @@ Poll the status and results of a running or completed crawl.
 
 ```json
 {
-  "crawl_id": "abc123",
+  "id": "abc123",
+  "url": "https://example.com",
   "status": "completed",
-  "pages_crawled": 8,
-  "pages_found": 12,
+  "created_at": "2026-07-22T14:00:00Z",
+  "completed_at": "2026-07-22T14:01:00Z",
   "results": [
     {
       "url": "https://example.com/page",
       "title": "Page Title",
       "content": "...",
-      "status_code": 200,
-      "depth": 1
+      "status_code": 200
     }
   ],
-  "created_at": "2026-07-22T14:00:00Z"
+  "stats": { "pages_crawled": 8 },
+  "error_message": null,
+  "max_pages": 10,
+  "max_depth": 3,
+  "render_js": false,
+  "output_format": "markdown",
+  "webhook_url": null,
+  "destinations": []
 }
 ```
 
-`status` values: `running` | `completed` | `failed` | `cancelled`
+`status` values: `running` | `completed` | `failed` | `interrupted`. The crawl identifier is returned as `id` in this response (and `crawl_id` from the list/start endpoints).
 
 ---
 
@@ -296,17 +303,16 @@ List all active browser sessions.
 ### Response
 
 ```json
-{
-  "sessions": [
-    {
-      "session_id": "my-session",
-      "engine": "playwright",
-      "created_at": "2026-07-22T14:00:00Z",
-      "last_used": "2026-07-22T14:05:00Z",
-      "cookies": {}
-    }
-  ]
-}
+[
+  {
+    "session_id": "my-session",
+    "engine": "playwright",
+    "created_at": "2026-07-22T14:00:00Z",
+    "last_active": "2026-07-22T14:05:00Z",
+    "request_count": 3,
+    "cookie_count": 2
+  }
+]
 ```
 
 ---
@@ -318,7 +324,7 @@ Destroy a browser session and release its resources.
 ### Response
 
 ```json
-{ "message": "Session my-session closed." }
+{ "deleted": true, "session_id": "my-session" }
 ```
 
 ---
@@ -330,8 +336,16 @@ Health check — no authentication required.
 ### Response
 
 ```json
-{ "status": "ok" }
+{
+  "status": "ok",
+  "database": "ok",
+  "redis": "ok",
+  "active_sessions": 2,
+  "playwright_slots_free": 3
+}
 ```
+
+`status` is `"ok"` when both database and Redis checks pass, otherwise `"degraded"`. `database`/`redis` report `"ok"` or an `"error: <message>"` string.
 
 ---
 
@@ -382,8 +396,8 @@ Start a batch crawl job by uploading a CSV or text file containing a list of URL
 ```json
 {
   "batch_id": "batch-884a22c0",
-  "status": "queued",
-  "urls_count": 12
+  "total_urls": 12,
+  "status": "processing"
 }
 ```
 
@@ -395,20 +409,18 @@ Poll the status and progress of a batch crawl job.
 {
   "id": "batch-884a22c0",
   "status": "completed",
-  "urls": ["https://example.com/a", "https://example.com/b"],
-  "results": [
-    {
-      "url": "https://example.com/a",
-      "status_code": 200,
-      "content": "# Page A..."
-    }
-  ],
-  "created_at": "2026-08-03T12:00:00Z"
+  "created_at": "2026-08-03T12:00:00Z",
+  "completed_at": "2026-08-03T12:04:00Z",
+  "total_urls": 12,
+  "processed_urls": 12,
+  "webhook_url": null,
+  "export_path": "/path/to/export.json",
+  "error_message": null
 }
 ```
 
 ### GET /api/crawl/batch/{batch_id}/download
-Download completed batch results as a CSV file. Returns HTTP `400` if the batch job has not finished processing.
+Download completed batch results as a JSON file (`batch_{id}.json`, `application/json`). Returns HTTP `400` if the batch job has not finished processing.
 
 ---
 

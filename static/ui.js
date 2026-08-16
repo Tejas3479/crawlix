@@ -1,6 +1,9 @@
 import { state } from './state.js';
 
 export function getMotion() {
+  if (window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    return null;
+  }
   return window.Motion || window.motion || (window.MotionOne && window.MotionOne.dom) || null;
 }
 
@@ -147,7 +150,7 @@ export function updateMetaBar(data) {
 }
 
 export function initCardEffects() {
-  document.querySelectorAll(".glow-card, .request-panel, .options-grid, .meta-bar").forEach(card => {
+  document.querySelectorAll(".glow-card, .meta-bar").forEach(card => {
     card.classList.add("glow-card");
     card.addEventListener("mousemove", (e) => {
       const rect = card.getBoundingClientRect();
@@ -158,7 +161,7 @@ export function initCardEffects() {
     });
   });
 
-  document.querySelectorAll(".tilt-card, .option-group, .action-item").forEach(card => {
+  document.querySelectorAll(".tilt-card").forEach(card => {
     card.classList.add("tilt-card");
     card.addEventListener("mousemove", (e) => {
       const rect = card.getBoundingClientRect();
@@ -182,14 +185,16 @@ export function initCardEffects() {
   if (lightboxOverlay && lightboxImg) {
     document.addEventListener("click", (e) => {
       const target = e.target;
-      if (target && target.tagName === "IMG" && (target.classList.contains("screenshot-img") || target.closest("#tab-screenshot"))) {
+      if (target && target.tagName === "IMG" && (target.id === "screenshot-img" || target.closest("#content-screenshot"))) {
         lightboxImg.src = target.src;
         lightboxOverlay.classList.add("active");
         animateModalOpen(lightboxOverlay, lightboxImg);
+        focusModal(lightboxOverlay, { focusTarget: lightboxCloseBtn });
       }
     });
 
     const closeLightbox = () => {
+      blurModal(lightboxOverlay, { restoreFocus: true });
       const Motion = getMotion();
       if (Motion && typeof Motion.animate === "function") {
         Motion.animate(lightboxOverlay, { opacity: 0 }, { duration: 0.18 }).finished.then(() => {
@@ -284,4 +289,77 @@ export function animateModalOpen(modalEl, contentEl) {
       { type: "spring", stiffness: 450, damping: 26 }
     );
   }
+}
+
+const openModals = new Set();
+let modalLastFocused = null;
+let modalKeydownBound = false;
+
+function trapModalFocus(e) {
+  if (e.key !== "Tab" || openModals.size === 0) return;
+  const modalEl = [...openModals][openModals.size - 1];
+  const focusable = Array.from(
+    modalEl.querySelectorAll('button, [href], input, select, textarea, [tabindex]:not([tabindex="-1"])')
+  ).filter(el => !el.disabled && el.offsetParent !== null);
+  if (!focusable.length) {
+    e.preventDefault();
+    return;
+  }
+  const first = focusable[0];
+  const last = focusable[focusable.length - 1];
+  const active = document.activeElement;
+  if (e.shiftKey) {
+    if (active === first || !modalEl.contains(active)) {
+      e.preventDefault();
+      last.focus();
+    }
+  } else if (active === last || !modalEl.contains(active)) {
+    e.preventDefault();
+    first.focus();
+  }
+}
+
+export function focusModal(modalEl, opts = {}) {
+  if (!modalEl) return;
+  if (!modalKeydownBound) {
+    modalKeydownBound = true;
+    document.addEventListener("keydown", trapModalFocus);
+  }
+  openModals.add(modalEl);
+  modalLastFocused = document.activeElement;
+  if (opts.lockScroll !== false) document.body.style.overflow = "hidden";
+  const focusTarget = opts.focusTarget ||
+    modalEl.querySelector("button, [href], input, select, textarea");
+  if (focusTarget) focusTarget.focus();
+}
+
+export function blurModal(modalEl, opts = {}) {
+  if (!modalEl) return;
+  openModals.delete(modalEl);
+  if (openModals.size === 0) document.body.style.overflow = "";
+  if (opts.restoreFocus && modalLastFocused && document.contains(modalLastFocused)) {
+    modalLastFocused.focus();
+  }
+  modalLastFocused = null;
+}
+
+export function renderSkeletonCards(count = 3) {
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    html += `
+      <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:16px;">
+        <div class="skeleton-loader" style="height:10px; width:35%; margin-bottom:12px;"></div>
+        <div class="skeleton-loader" style="height:14px; margin-bottom:8px;"></div>
+        <div class="skeleton-loader" style="height:6px; margin-top:10px;"></div>
+      </div>`;
+  }
+  return html;
+}
+
+export function renderSkeletonRows(count = 3) {
+  let html = "";
+  for (let i = 0; i < count; i++) {
+    html += `<div class="skeleton-loader" style="height:34px; margin-bottom:8px;"></div>`;
+  }
+  return html;
 }

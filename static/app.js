@@ -1,5 +1,5 @@
 import { state, API_BASE, TABS, MAX_HISTORY, saveBuilderState, loadBuilderState } from './state.js';
-import { showToast, timeAgo, escapeHtml, updateMetaBar, initCardEffects, animateViewEntrance, animateListItems } from './ui.js';
+import { showToast, timeAgo, escapeHtml, updateMetaBar, initCardEffects, animateViewEntrance, animateListItems, renderJsonTree, renderSkeletonCards } from './ui.js';
 import { checkHealth, fetchSessions, deleteSessionAPI, performFetchAPI, saveToHistory, downloadSessionsCsv, downloadSessionsJson } from './api.js';
 import { setupJsRenderingToggle, setupOutputFormatToggle, setupActionBuilder, parseActions, setupEnvPanel, createKvRow, parseKvContainer, generatePythonSnippet, isValidHttpUrl, validateJsonSchema, validateRequestBody, restoreBuilderStateUI } from './editor.js';
 import { renderCrawls, startCrawlJob, setupCrawlPolling, setupCrawlDownload, setupCrawlCsvDownload, setupCrawlScheduling } from './crawler.js';
@@ -129,29 +129,21 @@ export function renderTab(tabName) {
   } else if (tabName === "json") {
     const tree = document.getElementById("json-tree");
     if (!tree) return;
-    // renderJsonTree imported from ui, but we avoided circular dep by inline rendering it or using it from ui.js
-    // wait, renderJsonTree is in ui.js. We need to import it. I'll add it to imports from ui.js dynamically here if needed
-    // Let me just import it: Wait, I missed it in the ui import above!
+    tree.innerHTML = renderJsonTree(state.lastResponse, 0);
   }
 }
 
-// Ensure json rendering uses ui.js
-import { renderJsonTree } from './ui.js';
-// Patch renderTab for json
-const originalRenderTab = renderTab;
-export function renderTabPatched(tabName) {
-    if (tabName === 'json' && state.lastResponse) {
-       const tree = document.getElementById("json-tree");
-       if (tree) tree.innerHTML = renderJsonTree(state.lastResponse, 0);
-    } else {
-        originalRenderTab(tabName);
-    }
-}
 
+let sessionsHydrated = false;
 
 export async function renderSessions() {
   const grid = document.getElementById("session-grid");
   if (!grid) return;
+
+  if (!sessionsHydrated) {
+    sessionsHydrated = true;
+    grid.innerHTML = renderSkeletonCards(3);
+  }
   
   try {
     const sessions = await fetchSessions();
@@ -172,7 +164,7 @@ export async function renderSessions() {
           <div>Created: ${timeAgo(s.created_at)}</div>
           <div>Last active: ${timeAgo(s.last_active)}</div>
         </div>
-        <button class="delete-session-btn" data-session-id="${s.session_id}" title="Delete session">✕</button>
+        <button class="delete-session-btn" data-session-id="${s.session_id}" title="Delete session" aria-label="Delete session ${escapeHtml(s.session_id)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
       </div>
     `).join("");
     
@@ -200,6 +192,14 @@ export async function renderSessions() {
     });
     animateListItems("#session-grid > .session-card");
   } catch (e) {
+    grid.innerHTML = `
+      <div class="error-state-container">
+        <span class="error-icon"><svg class="icon" aria-hidden="true"><use href="#icon-alert"/></svg></span>
+        <span>${escapeHtml(e.message || "Network error")}</span>
+        <button class="error-retry-btn" id="sessions-retry-btn"><svg class="icon" aria-hidden="true"><use href="#icon-refresh"/></svg><span>Retry</span></button>
+      </div>`;
+    const retryBtn = document.getElementById("sessions-retry-btn");
+    if (retryBtn) retryBtn.addEventListener("click", () => renderSessions());
     showToast("Error loading sessions: " + (e.message || "Network error"), "error");
   }
 }
@@ -267,7 +267,7 @@ export function renderHistory() {
       if (respPanel) respPanel.classList.remove("hidden");
       
       updateMetaBar(h.response);
-      renderTabPatched(state.activeTab);
+      renderTab(state.activeTab);
       showToast(`Loaded: ${h.method} ${h.url.substring(0, 40)}…`, "info", 2000);
     };
     item.addEventListener("click", handler);
@@ -340,12 +340,14 @@ function setupPreviewThemeToggle() {
   if (!tabContent) return;
   const btn = document.createElement("button");
   btn.className = "preview-theme-btn";
-  btn.textContent = "☀ Light preview";
+  btn.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#icon-sun"/></svg><span>Light preview</span>';
   btn.title = "Toggle preview background (dark/light)";
   btn.addEventListener("click", () => {
     state.previewDark = !state.previewDark;
-    btn.textContent = state.previewDark ? "☀ Light preview" : "☾ Dark preview";
-    if (state.lastResponse) renderTabPatched("preview");
+    btn.innerHTML = state.previewDark
+      ? '<svg class="icon" aria-hidden="true"><use href="#icon-sun"/></svg><span>Light preview</span>'
+      : '<svg class="icon" aria-hidden="true"><use href="#icon-moon"/></svg><span>Dark preview</span>';
+    if (state.lastResponse) renderTab("preview");
   });
   tabContent.insertBefore(btn, tabContent.firstChild);
 }
@@ -648,6 +650,25 @@ document.addEventListener("DOMContentLoaded", () => {
       state.lastRequest = reqBody;
       saveBuilderState(); // User requirement: State Persistence
 
+      const respPanel = document.getElementById("response-panel");
+      const loadingEl = document.getElementById("response-loading");
+      const errorEl = document.getElementById("response-error");
+
+      if (respPanel) {
+        respPanel.classList.remove("hidden");
+        animateViewEntrance(respPanel);
+      }
+      if (loadingEl) {
+        loadingEl.innerHTML = `
+          <div style="background:rgba(255,255,255,0.04); border:1px solid rgba(255,255,255,0.08); border-radius:10px; padding:20px;">
+            <div class="skeleton-loader" style="height:14px; width:45%; margin-bottom:12px;"></div>
+            <div class="skeleton-loader" style="height:14px; margin-bottom:10px;"></div>
+            <div class="skeleton-loader" style="height:220px;"></div>
+          </div>`;
+        loadingEl.classList.remove("hidden");
+      }
+      if (errorEl) errorEl.classList.add("hidden");
+
       try {
         const data = await performFetchAPI(reqBody);
         state.lastResponse = data;
@@ -655,20 +676,33 @@ document.addEventListener("DOMContentLoaded", () => {
 
         saveToHistory(reqBody, data);
 
-        const respPanel = document.getElementById("response-panel");
-        if (respPanel) {
-          respPanel.classList.remove("hidden");
-          animateViewEntrance(respPanel);
-        }
-        
+        if (loadingEl) loadingEl.classList.add("hidden");
+
         updateMetaBar(data);
-        renderTabPatched(state.activeTab);
+        renderTab(state.activeTab);
         renderSessions();
-        
+
         if (!data.success) {
+          if (errorEl) {
+            errorEl.innerHTML = `
+              <div class="error-state-container">
+                <span class="error-icon"><svg class="icon" aria-hidden="true"><use href="#icon-alert"/></svg></span>
+                <span>${escapeHtml(data.error_message || data.error || "Request failed")}</span>
+              </div>`;
+            errorEl.classList.remove("hidden");
+          }
           showToast("Fetch returned error: " + (data.error || "unknown"), "warning");
         }
       } catch (e) {
+        if (loadingEl) loadingEl.classList.add("hidden");
+        if (errorEl) {
+          errorEl.innerHTML = `
+            <div class="error-state-container">
+              <span class="error-icon"><svg class="icon" aria-hidden="true"><use href="#icon-alert"/></svg></span>
+              <span>${escapeHtml(e.message || "Connection failed")}</span>
+            </div>`;
+          errorEl.classList.remove("hidden");
+        }
         showToast(e.message || "Connection failed", "error");
       } finally {
         sendBtn.disabled = false;
