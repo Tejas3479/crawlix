@@ -73,6 +73,40 @@ export class CrawlixClient {
     }
   }
 
+  // --- Map (URL discovery) ---
+
+  async map(url: string, options: any = {}): Promise<any> {
+    try {
+      const response = await this.client.post('/api/map', { url, ...options });
+      return response.data;
+    } catch (error: any) {
+      this.handleError(error);
+    }
+  }
+
+  // --- Search ---
+
+  async search(query: string, options: any = {}): Promise<any> {
+    try {
+      const response = await this.client.post('/api/search', { query, ...options });
+      return response.data;
+    } catch (error: any) {
+      this.handleError(error);
+    }
+  }
+
+  // --- MCP ---
+
+  async mcp(method: string, params: any = {}, id: number = 1): Promise<any> {
+    try {
+      const body = { jsonrpc: '2.0', id, method, params };
+      const response = await this.client.post('/mcp', body);
+      return response.data;
+    } catch (error: any) {
+      this.handleError(error);
+    }
+  }
+
   private handleError(error: any): never {
     if (error.response) {
       const detail = error.response.data?.detail || error.response.data;

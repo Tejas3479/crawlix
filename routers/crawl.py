@@ -40,6 +40,8 @@ async def start_crawl(req: CrawlRequest):
         stealth=req.stealth,
         webhook_url=str(req.webhook_url) if req.webhook_url else None,
         destinations=req.destinations,
+        respect_robots=req.respect_robots,
+        json_schema=req.json_schema,
     )
     return {"crawl_id": crawl_id, "status": "running"}
 

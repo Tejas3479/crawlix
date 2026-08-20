@@ -238,6 +238,15 @@ server {
 | `MAX_SESSIONS` | `100` | Total max concurrent sessions |
 | `CORS_ORIGINS` | `*` | Comma-separated allowed origins, e.g. `https://myapp.com` |
 | `DISABLE_SSRF_CHECK` | `false` | Allow requests to private IPs (⚠️ dev only) |
+| `OPENAI_API_KEY` | — | Used for LLM structured extraction + embeddings (fallback provider) |
+| `ANTHROPIC_API_KEY` | — | Anthropic structured extraction (fallback provider) |
+| `GEMINI_API_KEY` | — | Gemini structured extraction (fallback provider) |
+| `CACHE_ENABLED` | `true` | Enable the content cache (Redis-backed, in-memory fallback) |
+| `CACHE_TTL_SECONDS` | `3600` | Content cache TTL in seconds |
+| `WEBHOOK_SECRET` | — | HMAC-SHA256 signing secret for webhook payloads (`X-Crawlix-Signature`) |
+| `WEBHOOK_MAX_RETRIES` | `3` | Webhook delivery attempts with exponential backoff |
+| `CAPTCHA_PROVIDER` | — | Captcha solving provider for anti-bot challenges |
+| `CAPTCHA_API_KEY` | — | API key for the captcha provider |
 
 ---
 

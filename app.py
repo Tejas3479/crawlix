@@ -22,6 +22,7 @@ from fetcher import (
     session_manager,
 )
 from routers import admin_router, crawl_router, fetch_router, health_router
+from routers import map_router, mcp_router, search_router
 from services.session_manager import redis_client
 
 # Set up logging configuration with SensitiveDataFilter
@@ -271,6 +272,9 @@ app.include_router(health_router)
 app.include_router(fetch_router)
 app.include_router(crawl_router)
 app.include_router(admin_router)
+app.include_router(map_router)
+app.include_router(search_router)
+app.include_router(mcp_router)
 
 # Mount static files
 if os.path.isdir("static"):

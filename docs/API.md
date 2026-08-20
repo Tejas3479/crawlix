@@ -22,6 +22,10 @@
 | `POST` | `/api/crawl/batch` | Batch | Start a batch crawl job via file upload |
 | `GET` | `/api/crawl/batch/{id}` | Batch | Poll batch crawl status & progress |
 | `GET` | `/api/crawl/batch/{id}/download` | Batch | Download batch results in CSV/JSON format |
+| `POST` | `/api/map` | Discovery | Discover site URLs via sitemap.xml + link-based BFS |
+| `POST` | `/api/search` | Search | Web search with optional content fetching |
+| `POST` | `/mcp` | MCP | Model Context Protocol server (tools: scrape, map, crawl, search) |
+| `GET` | `/mcp` | MCP | MCP SSE transport endpoint |
 | `GET` | `/api/sessions` | Sessions | List active browser sessions |
 | `DELETE` | `/api/sessions/{id}` | Sessions | Destroy a browser session and release cookies |
 | `POST` | `/api/destinations` | Admin | Create a webhook or Pinecone destination |
@@ -67,6 +71,7 @@ Fetch a single URL. Supports both fast HTTP (`curl-cffi`) and full JS rendering 
   "actions": [],
   "screenshot": false,
   "screenshot_format": "png",
+  "bypass_cache": false,
   "llm_api_key": null,
   "llm_provider": "openai",
   "llm_model": null,
@@ -82,7 +87,7 @@ Fetch a single URL. Supports both fast HTTP (`curl-cffi`) and full JS rendering 
 |-------|------|---------|-------------|
 | `url` | string | **required** | Target URL to fetch |
 | `method` | string | `"GET"` | HTTP method: GET, POST, PUT, DELETE, PATCH, HEAD |
-| `output_format` | string | `"html"` | `"html"` \| `"markdown"` \| `"structured"` |
+| `output_format` | string | `"html"` | `"html"` \| `"markdown"` \| `"structured"` \| `"css"` |
 | `render_js` | boolean | `false` | Use Playwright (headless Chrome) instead of curl |
 | `headers` | object | `{}` | Custom request headers |
 | `cookies` | object | `{}` | Custom cookies |
@@ -102,6 +107,7 @@ Fetch a single URL. Supports both fast HTTP (`curl-cffi`) and full JS rendering 
 | `actions` | array | `[]` | Browser actions to perform before extracting (see below) |
 | `screenshot` | boolean | `false` | Capture a screenshot after page load |
 | `screenshot_format` | string | `"png"` | `"png"` \| `"jpeg"` |
+| `bypass_cache` | boolean | `false` | Skip the content cache and force a fresh fetch |
 | `llm_api_key` | string | `null` | API key for LLM extraction |
 | `llm_provider` | string | `"openai"` | `"openai"` \| `"anthropic"` \| `"gemini"` |
 | `llm_model` | string | `null` | Model override (e.g. `"gpt-4o"`, `"claude-3-5-haiku-20241022"`) |
@@ -169,6 +175,7 @@ Actions are executed in order before content is extracted. Each action is an obj
 | `error_message` | string \| null | Human-readable error detail |
 | `screenshot` | string \| null | Base64 data URL of screenshot (if requested) |
 | `timing` | object \| null | Phase timing breakdown (see below) |
+| `cache_hit` | boolean | `true` if the response was served from the content cache |
 
 #### Timing Object
 
@@ -179,6 +186,40 @@ Actions are executed in order before content is extracted. Each action is an obj
 | `ttfb_ms` | Time to first byte / content body read start |
 | `transfer_ms` | Content processing time (markdown conversion, LLM extraction, etc.) |
 | `total_ms` | Full end-to-end duration measured server-side |
+
+### CSS Selector Extraction (`output_format: "css"`)
+
+Deterministic, LLM-free JSON extraction (no provider keys required, zero token cost). Provide a `json_schema` shaped like a CSS extraction strategy:
+
+```json
+{
+  "output_format": "css",
+  "json_schema": {
+    "name": "Products",
+    "baseSelector": "div.product",
+    "fields": [
+      { "name": "title", "selector": "h2", "type": "text" },
+      { "name": "price", "selector": ".price", "type": "text", "transform": "strip" },
+      { "name": "link", "selector": "a", "type": "attribute", "attribute": "href" }
+    ]
+  }
+}
+```
+
+| Field | Description |
+|-------|-------------|
+| `baseSelector` | (optional) CSS selector for the repeating container; omit to treat the document as one item |
+| `fields[].name` | Output key |
+| `fields[].selector` | CSS selector resolved **within** the container |
+| `fields[].type` | `text` \| `attribute` (requires `attribute`) \| `html` \| `integer` \| `number` \| `boolean` |
+| `fields[].transform` | `strip` \| `upper` \| `lower` |
+| `fields[].fallback` | Value used when the selector matches nothing |
+
+If a `structured` request also contains `baseSelector`/`fields`, the cheaper CSS path is used automatically instead of the LLM.
+
+### Caching
+
+GET fetches without custom headers/cookies/body are cached by default (TTL `CACHE_TTL_SECONDS`, default `3600`; disable with `CACHE_ENABLED=false`). Authenticated/stateful requests are never cached. The response includes `cache_hit` and responses can be force-refreshed with `bypass_cache: true`.
 
 ---
 
@@ -198,6 +239,7 @@ Start an asynchronous site crawl. Returns a `crawl_id` to poll for results.
   "strip_links": false,
   "css_selector": null,
   "limit_domain": true,
+  "respect_robots": true,
   "actions": [],
   "extraction_prompt": null,
   "stealth": false
@@ -214,6 +256,7 @@ Start an asynchronous site crawl. Returns a `crawl_id` to poll for results.
 | `strip_links` | boolean | `false` | Remove links from markdown |
 | `css_selector` | string | `null` | Extract only matching element per page |
 | `limit_domain` | boolean | `true` | Stay within the same domain |
+| `respect_robots` | boolean | `true` | Honor robots.txt `Disallow` rules during the crawl |
 | `extraction_prompt` | string | `null` | LLM extraction instruction applied to each page |
 | `stealth` | boolean | `false` | Playwright stealth mode |
 
@@ -424,6 +467,155 @@ Download completed batch results as a JSON file (`batch_{id}.json`, `application
 
 ---
 
+## POST /api/map
+
+Discover the URLs of a site using its sitemap first, then link-based BFS as a fallback.
+
+### Request Body
+
+```json
+{
+  "url": "https://example.com",
+  "limit": 100,
+  "include_sitemap": true,
+  "allow_subdomains": false
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `url` | string | **required** | Site root to map |
+| `limit` | integer | `100` | Maximum URLs to return |
+| `include_sitemap` | boolean | `true` | Check `/sitemap.xml` before crawling links |
+| `allow_subdomains` | boolean | `false` | Include subdomains of the target domain |
+| `render_js` | boolean | `false` | Reserved for JS-rendered discovery |
+| `timeout` | integer | `15` | Per-request timeout in seconds |
+| `proxy` | object | `null` | `{ "url": "http://user:pass@host:port" }` |
+
+### Response
+
+```json
+{
+  "success": true,
+  "error": null,
+  "urls": ["https://example.com/", "https://example.com/about", "..."],
+  "count": 42,
+  "limit": 100,
+  "base_domain": "example.com",
+  "discovered_via": "sitemap",
+  "latency_ms": 812
+}
+```
+
+`discovered_via` is `"sitemap"` when a sitemap supplied the URLs, otherwise `"link"`.
+
+---
+
+## POST /api/search
+
+Web search with optional fetching of the top results.
+
+### Request Body
+
+```json
+{
+  "query": "fastapi web scraping",
+  "provider": "duckduckgo",
+  "max_results": 10,
+  "fetch_content": false,
+  "content_limit": 3
+}
+```
+
+| Field | Type | Default | Description |
+|-------|------|---------|-------------|
+| `query` | string | **required** | Search query |
+| `provider` | string | `"duckduckgo"` | `"duckduckgo"` (keyless) \| `"serper"` (needs `SERPER_API_KEY` or `api_key`) |
+| `api_key` | string | `null` | Provider API key override (falls back to `SERPER_API_KEY`) |
+| `max_results` | integer | `10` | Max results to return |
+| `fetch_content` | boolean | `false` | Fetch markdown for the top results |
+| `content_limit` | integer | `3` | How many top results to fetch when `fetch_content` is true |
+
+### Response
+
+```json
+{
+  "success": true,
+  "error": null,
+  "query": "fastapi web scraping",
+  "provider": "duckduckgo",
+  "results": [
+    {
+      "title": "FastAPI",
+      "url": "https://fastapi.tiangolo.com/",
+      "snippet": "FastAPI framework, high performance, easy to learn...",
+      "markdown": "# FastAPI...",
+      "status_code": 200
+    }
+  ],
+  "latency_ms": 640
+}
+```
+
+`markdown` and `status_code` are present only when `fetch_content` is `true`.
+
+---
+
+## MCP Server (/mcp)
+
+Crawlix exposes a Model Context Protocol server compatible with Claude Desktop and other MCP clients. It uses the Streamable HTTP transport (JSON-RPC 2.0 over `POST /mcp`); a legacy SSE endpoint is available at `GET /mcp`.
+
+Authenticate with the same API key via `x-api-key` or `Authorization: Bearer`.
+
+Available tools (see `tools/list`):
+
+| Tool | Description |
+|------|-------------|
+| `scrape` | Fetch a URL as html/markdown/structured/css |
+| `map` | Discover site URLs via sitemap + BFS |
+| `crawl` | Start an async crawl, returns `crawl_id` |
+| `get_crawl` | Poll crawl status/results by `crawl_id` |
+| `search` | Web search with optional content fetch |
+| `health` | Server health |
+
+Minimal example:
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "x-api-key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+```
+
+```bash
+curl -X POST http://localhost:8000/mcp \
+  -H "x-api-key: your-secret-key" \
+  -H "Content-Type: application/json" \
+  -d '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"scrape","arguments":{"url":"https://example.com","output_format":"markdown"}}}'
+```
+
+---
+
+## Webhooks
+
+When a crawl or batch job completes, Crawlix POSTs the job payload to the configured `webhook_url`. Webhooks are delivered with retries and exponential backoff (`WEBHOOK_MAX_RETRIES`, default 3).
+
+If `WEBHOOK_SECRET` is set, every request is signed with an HMAC-SHA256 of the raw body:
+
+```
+X-Crawlix-Signature: sha256=<hex digest>
+```
+
+Verify it server-side:
+
+```python
+import hashlib, hmac
+sig = hmac.new(b"your-secret", request.body, hashlib.sha256).hexdigest()
+assert request.headers["X-Crawlix-Signature"] == f"sha256={sig}"
+```
+
+---
+
 ## Webhook & Vector Destinations (/api/destinations)
 
 ### POST /api/destinations
@@ -551,6 +743,15 @@ Delete a proxy server.
 | `422` | — | Request body validation failed (Pydantic) |
 | `500` | `fetch_error` | Unhandled fetch error (check `error_message`) |
 | `504` | `timeout` | Request exceeded the configured timeout |
+
+### Extraction Errors (returned inside the response body)
+
+| Error | Description |
+|-------|-------------|
+| `css_extraction_failed` | CSS extraction schema missing/invalid, or no elements matched |
+| `llm_api_failed` | All configured LLM providers failed after retries |
+| `llm_parse_failed` | LLM returned non-JSON output (raw text included) |
+| `llm_validation_failed` | LLM output failed JSON-Schema validation after retry |
 
 ---
 

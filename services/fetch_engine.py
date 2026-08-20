@@ -10,6 +10,7 @@ from captcha_solver import CaptchaDetector
 from database import ProxyManager
 
 from .browser_manager import PlaywrightManager
+from .cache import cache_get, cache_key, cache_set
 from .content import process_content
 from .log_filter import logger, sanitize_proxy_url, sanitize_url
 from .ssrf import is_ssrf_safe
@@ -44,7 +45,8 @@ async def run_fetch(
     screenshot_format: str = "png",
     extraction_prompt: str | None = None,
     wait_until: str = "networkidle",
-    stealth: bool = False
+    stealth: bool = False,
+    bypass_cache: bool = False,
 ) -> dict:
     """
     Returns dict with keys:
@@ -64,9 +66,41 @@ async def run_fetch(
             "error": "forbidden_address",
             "error_message": f"URL {url} resolves to a restricted local or private address.",
             "screenshot": None,
-            "timing": None
+            "timing": None,
+            "cache_hit": False,
         }
     _t_security = _time.monotonic()
+
+    # 2. Cache lookup: only for idempotent GETs with no auth/state-affecting options.
+    cacheable = (
+        not bypass_cache
+        and method.upper() == "GET"
+        and not headers
+        and not cookies
+        and body is None
+        and json_body is None
+        and session is None
+        and not screenshot
+    )
+    cache_usable = cacheable and (render_js is False or output_format == "html")
+    if cache_usable:
+        ck = cache_key(
+            url=url,
+            method=method,
+            render_js=render_js,
+            output_format=output_format,
+            strip_links=strip_links,
+            css_selector=css_selector,
+            json_schema=json_schema,
+            extraction_prompt=extraction_prompt,
+            llm_provider=llm_provider,
+            llm_model=llm_model,
+        )
+        cached = await cache_get(ck)
+        if cached is not None and isinstance(cached, dict):
+            logger.info(f"Cache hit for {sanitize_url(url)} ({output_format})")
+            cached["cache_hit"] = True
+            return cached
 
     # 2. Parse Proxy Pool (handles comma, newline, and CRLF delimiters)
     proxies_list = []
@@ -340,7 +374,8 @@ async def run_fetch(
                     "content": None,
                     "raw_html": "",
                     "screenshot": None,
-                    "timing": None
+                    "timing": None,
+                    "cache_hit": False,
                 }
 
     content = await process_content(
@@ -355,7 +390,7 @@ async def run_fetch(
         llm_model=llm_model,
         extraction_prompt=extraction_prompt
     )
-    
+
     _t_done = _time.monotonic()
 
     # Build timing breakdown (all values in ms)
@@ -365,7 +400,7 @@ async def run_fetch(
     _ttfb_ms = max(0, int((_t_ttfb - _t_connect) * 1000)) if '_t_ttfb' in dir() and '_t_connect' in dir() else 0
     _transfer_ms = max(0, int((_t_done - (_t_ttfb if '_t_ttfb' in dir() else _t_security)) * 1000))
 
-    return {
+    result = {
         "final_url": final_url,
         "status_code": status_code,
         "content": content,
@@ -382,3 +417,10 @@ async def run_fetch(
             "total_ms": int((_t_done - _t0) * 1000)
         }
     }
+
+    if cache_usable:
+        result["cache_hit"] = False
+        result["cache_key"] = ck
+        await cache_set(ck, result)
+
+    return result

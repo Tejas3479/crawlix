@@ -68,20 +68,20 @@ export function renderJsonTree(obj, depth) {
     return '<span style="color:#86efac">"' + safe.substring(0, 200) + (obj.length > 200 ? '...' : '') + '"</span>';
   }
   if (Array.isArray(obj)) {
-    if (obj.length === 0) return '<span style="color:#9a9a9a">[]</span>';
+    if (obj.length === 0) return '<span class="text-secondary">[]</span>';
     const items = obj.slice(0, 50).map(v =>
       '<div style="margin-left:' + ((depth + 1) * 14) + 'px">' + renderJsonTree(v, depth + 1) + '</div>'
     ).join("");
     const more = obj.length > 50 ? '<div style="margin-left:' + ((depth + 1) * 14) + 'px;color:#6a6a6a">… ' + (obj.length - 50) + ' more</div>' : "";
-    return '<span style="color:#9a9a9a">[</span>' + items + more + '<div style="margin-left:' + (depth * 14) + 'px"><span style="color:#9a9a9a">]</span></div>';
+    return '<span class="text-secondary">[</span>' + items + more + '<div style="margin-left:' + (depth * 14) + 'px"><span class="text-secondary">]</span></div>';
   }
   if (typeof obj === "object") {
     const entries = Object.entries(obj);
-    if (entries.length === 0) return '<span style="color:#9a9a9a">{}</span>';
+    if (entries.length === 0) return '<span class="text-secondary">{}</span>';
     const rows = entries.map(([k, v]) =>
-      '<div style="margin-left:' + ((depth + 1) * 14) + 'px"><span style="color:#4fc3f7">"' + escapeHtml(k) + '"</span><span style="color:#9a9a9a">: </span>' + renderJsonTree(v, depth + 1) + '</div>'
+      '<div style="margin-left:' + ((depth + 1) * 14) + 'px"><span style="color:#4fc3f7">"' + escapeHtml(k) + '"</span><span class="text-secondary">: </span>' + renderJsonTree(v, depth + 1) + '</div>'
     ).join("");
-    return '<span style="color:#9a9a9a">{</span>' + rows + '<div style="margin-left:' + (depth * 14) + 'px"><span style="color:#9a9a9a">}</span></div>';
+    return '<span class="text-secondary">{</span>' + rows + '<div style="margin-left:' + (depth * 14) + 'px"><span class="text-secondary">}</span></div>';
   }
   return escapeHtml(String(obj));
 }

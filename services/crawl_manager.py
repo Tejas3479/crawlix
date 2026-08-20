@@ -1,8 +1,10 @@
 import asyncio
 import os
 from urllib.parse import urljoin, urlparse
+from urllib.robotparser import RobotFileParser
 
 from bs4 import BeautifulSoup
+from curl_cffi.requests import AsyncSession
 from sqlalchemy import desc, select
 
 from database import CrawlJob, ProxyManager, async_session_maker
@@ -10,6 +12,7 @@ from database import CrawlJob, ProxyManager, async_session_maker
 from .browser_manager import playwright_mgr
 from .fetch_engine import run_fetch
 from .log_filter import logger
+from .ssrf import is_ssrf_safe
 
 
 def extract_links(html: str, base_url: str) -> list[str]:
@@ -33,6 +36,35 @@ def extract_links(html: str, base_url: str) -> list[str]:
         logger.error(f"Error extracting links: {e}")
         return []
 
+
+async def load_robot_parser(seed_url: str, timeout: float = 10.0) -> RobotFileParser | None:
+    """Fetch and parse robots.txt for the seed URL's origin. Returns None if unavailable."""
+    parsed = urlparse(seed_url)
+    if not parsed.netloc:
+        return None
+    scheme = parsed.scheme or "https"
+    robots_url = f"{scheme}://{parsed.netloc}/robots.txt"
+    if not await is_ssrf_safe(robots_url):
+        return None
+    try:
+        async with AsyncSession(impersonate="chrome120", timeout=timeout) as session:
+            resp = await session.get(robots_url)
+            if resp.status_code != 200:
+                return None
+            text = resp.text
+    except Exception as e:
+        logger.debug(f"robots.txt unavailable for {robots_url}: {e}")
+        return None
+
+    parser = RobotFileParser()
+    parser.set_url(robots_url)
+    try:
+        parser.parse(text.splitlines())
+    except Exception as e:
+        logger.debug(f"robots.txt parse failed for {robots_url}: {e}")
+        return None
+    return parser
+
 class CrawlManager:
     def __init__(self):
         self.tasks: dict[str, asyncio.Task] = {}
@@ -53,6 +85,8 @@ class CrawlManager:
         stealth: bool = False,
         webhook_url: str | None = None,
         destinations: list[str] | None = None,
+        respect_robots: bool = True,
+        json_schema: dict | None = None,
         arq_pool=None
     ) -> str:
         async with async_session_maker() as session:
@@ -88,14 +122,16 @@ class CrawlManager:
                     actions,
                     extraction_prompt,
                     stealth,
-                    webhook_url
+                    webhook_url,
+                    respect_robots,
+                    json_schema,
                 )
                 logger.info(f"Enqueued crawl job {crawl_id} to ARQ worker queue")
                 return crawl_id
             except Exception as e:
                 logger.warning(f"Failed to enqueue to ARQ pool ({e}), falling back to local task.")
 
-        task = asyncio.create_task(self._run_crawl(crawl_id, url, max_pages, max_depth, render_js, output_format, strip_links, css_selector, limit_domain, actions, extraction_prompt, stealth, webhook_url))
+        task = asyncio.create_task(self._run_crawl(crawl_id, url, max_pages, max_depth, render_js, output_format, strip_links, css_selector, limit_domain, actions, extraction_prompt, stealth, webhook_url, respect_robots, json_schema))
         self.tasks[crawl_id] = task
         return crawl_id
 
@@ -158,11 +194,23 @@ class CrawlManager:
             session.add(job)
             await session.commit()
 
-    async def _run_crawl(self, crawl_id: str, seed_url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False, webhook_url: str | None = None):
+    async def _run_crawl(self, crawl_id: str, seed_url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False, webhook_url: str | None = None, respect_robots: bool = True, json_schema: dict | None = None):
         queue = [(seed_url, 0)] # (url, depth)
         visited = set()
         crawled_count = 0
         base_domain = urlparse(seed_url).netloc
+
+        robot_parser = await load_robot_parser(seed_url) if respect_robots and not render_js else None
+        if robot_parser is not None:
+            logger.info(f"Crawl {crawl_id}: robots.txt loaded, honoring Disallow rules.")
+
+        def robots_allows(url: str) -> bool:
+            if robot_parser is None:
+                return True
+            try:
+                return robot_parser.can_fetch("*", url)
+            except Exception:
+                return True
 
         CONCURRENCY = 3
         semaphore = asyncio.Semaphore(CONCURRENCY)
@@ -171,6 +219,10 @@ class CrawlManager:
 
         async def crawl_worker(url, depth):
             nonlocal crawled_count
+            if not robots_allows(url):
+                logger.info(f"Crawl {crawl_id}: skipping {url} (disallowed by robots.txt)")
+                semaphore.release()
+                return
             proxy_url = await ProxyManager.get_proxy()
             try:
                 logger.info(f"Crawl {crawl_id}: scraping {url} (depth: {depth}) using proxy {proxy_url}")
@@ -193,7 +245,7 @@ class CrawlManager:
                     strip_links=strip_links,
                     llm_api_key=None,
                     llm_provider="openai" if os.getenv("OPENAI_API_KEY") else "gemini",
-                    json_schema=None,
+                    json_schema=json_schema,
                     css_selector=css_selector,
                     actions=actions,
                     extraction_prompt=extraction_prompt,

@@ -66,6 +66,7 @@ async def fetch_endpoint(req: FetchRequest):
         extraction_prompt=req.extraction_prompt,
         wait_until=req.wait_until,
         stealth=req.stealth,
+        bypass_cache=req.bypass_cache,
     )
 
     latency_ms = int((time.monotonic() - start) * 1000)
@@ -88,6 +89,7 @@ async def fetch_endpoint(req: FetchRequest):
         error_message=result.get("error_message"),
         screenshot=result.get("screenshot"),
         timing=result.get("timing"),
+        cache_hit=result.get("cache_hit", False),
     )
 
 

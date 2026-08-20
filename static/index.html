@@ -86,7 +86,7 @@
         </button>
         <div class="collapsible-body hidden" id="headers-body" role="region" aria-label="HTTP Headers">
           <div id="headers-list" class="kv-list" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
-          <button id="add-header-btn" class="icon-btn" style="margin-top: 8px;" aria-label="Add HTTP Header">+ Add Header</button>
+          <button id="add-header-btn" class="icon-btn" class="mt-2" aria-label="Add HTTP Header">+ Add Header</button>
         </div>
       </div>
 
@@ -97,7 +97,7 @@
         </button>
         <div class="collapsible-body hidden" id="cookies-body" role="region" aria-label="HTTP Cookies">
           <div id="cookies-list" class="kv-list" style="display:flex; flex-direction:column; gap:6px; margin-top:8px;"></div>
-          <button id="add-cookie-btn" class="icon-btn" style="margin-top: 8px;" aria-label="Add Cookie">+ Add Cookie</button>
+          <button id="add-cookie-btn" class="icon-btn" class="mt-2" aria-label="Add Cookie">+ Add Cookie</button>
         </div>
       </div>
 
@@ -119,6 +119,20 @@
         </button>
         <div class="collapsible-body hidden" id="json-schema-body" role="region" aria-label="LLM Output Settings">
           <div style="display: flex; flex-direction: column; gap: 12px; margin-top: 8px;">
+            <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px;">
+              <div class="option-group">
+                <label class="field-label" for="llm-provider-select">LLM Provider</label>
+                <select id="llm-provider-select" aria-label="LLM Provider">
+                  <option value="openai">OpenAI</option>
+                  <option value="anthropic">Anthropic (Claude)</option>
+                  <option value="gemini">Google Gemini</option>
+                </select>
+              </div>
+              <div class="option-group">
+                <label class="field-label" for="llm-model-input">Custom LLM Model</label>
+                <input type="text" id="llm-model-input" class="form-control" placeholder="e.g. gemini-3.6-flash" autocomplete="off" aria-label="Custom LLM Model" class="inp mt-1">
+              </div>
+            </div>
             <div class="option-group">
               <label class="field-label" for="json-schema-textarea">JSON Schema (Optional)</label>
               <textarea id="json-schema-textarea" rows="4" style="margin-top: 4px;" aria-label="JSON Schema Specification"
@@ -142,15 +156,11 @@
           <div class="options-grid" style="margin-top:0; margin-bottom:0; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));">
             <div class="option-group">
               <label class="field-label" for="css-selector-input">Target CSS Selector</label>
-              <input type="text" id="css-selector-input" class="form-control" placeholder="e.g. #main-content" autocomplete="off" aria-label="Target CSS Selector" style="height:40px; padding:0 12px; font-size:13px; margin-top:4px;">
+              <input type="text" id="css-selector-input" class="form-control" placeholder="e.g. #main-content" autocomplete="off" aria-label="Target CSS Selector" class="inp mt-1">
             </div>
             <div class="option-group">
               <label class="field-label" for="wait-selector-input">Wait For Selector</label>
-              <input type="text" id="wait-selector-input" class="form-control" placeholder="e.g. div.product-card" autocomplete="off" aria-label="Wait For Selector" style="height:40px; padding:0 12px; font-size:13px; margin-top:4px;">
-            </div>
-            <div class="option-group">
-              <label class="field-label" for="llm-model-input">Custom LLM Model</label>
-              <input type="text" id="llm-model-input" class="form-control" placeholder="e.g. gemini-3.6-flash" autocomplete="off" aria-label="Custom LLM Model" style="height:40px; padding:0 12px; font-size:13px; margin-top:4px;">
+              <input type="text" id="wait-selector-input" class="form-control" placeholder="e.g. div.product-card" autocomplete="off" aria-label="Wait For Selector" class="inp mt-1">
             </div>
             <div class="option-group" style="grid-column: span 3; display: flex; flex-direction: column;">
               <label class="field-label" for="proxy-input" style="margin-bottom: 4px;">Proxy Rotation Pool (One per line)</label>
@@ -168,7 +178,7 @@
           <div id="actions-list" class="actions-list" style="display:flex; flex-direction:column; gap:8px;">
             <!-- Action rows will be added here dynamically -->
           </div>
-          <button id="add-action-btn" class="icon-btn" style="margin-top: 8px;" aria-label="Add Browser Action">+ Add Action</button>
+          <button id="add-action-btn" class="icon-btn" class="mt-2" aria-label="Add Browser Action">+ Add Action</button>
         </div>
       </div>
 
@@ -180,6 +190,7 @@
             <option value="html">HTML</option>
             <option value="markdown">Markdown</option>
             <option value="structured">Structured JSON</option>
+            <option value="css">CSS Selector JSON</option>
           </select>
         </div>
         <div class="option-group" id="wait-until-group">
@@ -215,6 +226,10 @@
           <label class="checkbox-label">
             <input type="checkbox" id="scroll-checkbox">
             <span>Auto-scroll page</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" id="bypass-cache-checkbox">
+            <span>Bypass cache</span>
           </label>
           <label class="checkbox-label">
             <input type="checkbox" id="strip-links-checkbox">
@@ -361,7 +376,32 @@
             <label class="field-label" for="crawl-extraction-prompt">Extraction Instructions (Optional)</label>
             <textarea id="crawl-extraction-prompt" rows="2" style="margin-top:4px;" aria-label="Crawl Extraction Instructions Prompt" placeholder="e.g. Extract only product names and prices from each page."></textarea>
           </div>
+          <div class="option-group" style="grid-column: span 3;">
+            <label class="field-label" for="crawl-json-schema">JSON Schema (Optional, for structured output)</label>
+            <textarea id="crawl-json-schema" rows="3" style="margin-top:4px; font-family: 'JetBrains Mono', monospace; font-size: 12px;" aria-label="Crawl JSON Schema" placeholder='{"type":"object","properties":{"title":{"type":"string"}}}'></textarea>
+          </div>
+          <div class="option-group checkboxes" style="grid-column: span 3;">
+            <label class="checkbox-label">
+              <input type="checkbox" id="crawl-respect-robots-checkbox" checked>
+              <span>Honor robots.txt</span>
+            </label>
+          </div>
         </div>
+
+      <!-- Site Map -->
+      <div style="margin-top: 32px;" role="region" aria-label="Site Map URL Discovery">
+        <h3 class="field-label" style="margin-bottom: 12px;">Site Map (URL Discovery)</h3>
+        <div class="url-row" style="margin-bottom: 12px;">
+          <input type="text" id="map-url-input" class="form-control" placeholder="https://example.com" autocomplete="off" aria-label="Map Site Root URL" style="flex: 1; height: 44px; padding: 0 14px; font-size: 14px;">
+          <div style="display: flex; gap: 8px;">
+            <input type="number" id="map-limit-input" class="form-control" value="100" min="1" max="100000" aria-label="Max URLs to map" style="width: 90px; height: 44px; padding: 0 10px; font-size: 13px;">
+            <button id="map-start-btn" class="send-btn" aria-label="Map Site URLs">Map</button>
+          </div>
+        </div>
+        <div id="map-results" style="max-height: 320px; overflow-y: auto; border-radius: 8px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.07); padding: 8px;">
+          <div class="empty-state" style="padding: 16px;">Enter a URL and click Map to discover site URLs via sitemap + link discovery.</div>
+        </div>
+      </div>
 
       <!-- Crawl History Grid -->
       <div style="margin-top: 32px;" role="region" aria-label="Crawl Jobs Overview">
@@ -383,16 +423,16 @@
 
         <!-- Crawl Stats HUD -->
         <div id="crawl-stats-hud" role="group" aria-label="Crawl Statistics" style="display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px; margin-bottom: 16px;">
-          <div class="stat-card surface-panel" style="padding: 12px; border-radius: 8px;">
-            <div class="field-label" style="font-size: 9px; color: var(--text-secondary);">Success Rate</div>
+          <div class="stat-card surface-panel" >
+            <div class="field-label" class="label-meta">Success Rate</div>
             <div id="stat-success-rate" style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 600; color: var(--success-color); margin-top: 4px;">—</div>
           </div>
-          <div class="stat-card surface-panel" style="padding: 12px; border-radius: 8px;">
-            <div class="field-label" style="font-size: 9px; color: var(--text-secondary);">Pages Scraped</div>
+          <div class="stat-card surface-panel" >
+            <div class="field-label" class="label-meta">Pages Scraped</div>
             <div id="stat-pages-scraped" style="font-family: 'Outfit', sans-serif; font-size: 20px; font-weight: 600; color: var(--accent-2-color); margin-top: 4px;">—</div>
           </div>
-          <div class="stat-card surface-panel" style="padding: 12px; border-radius: 8px;">
-            <div class="field-label" style="font-size: 9px; color: var(--text-secondary);">Status Codes</div>
+          <div class="stat-card surface-panel" >
+            <div class="field-label" class="label-meta">Status Codes</div>
             <div id="stat-status-codes" style="font-family: 'Outfit', sans-serif; font-size: 14px; font-weight: 600; color: var(--text-primary); margin-top: 8px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">—</div>
           </div>
         </div>
@@ -401,10 +441,10 @@
           <table aria-label="Scraped Crawl Results Table" style="width: 100%; border-collapse: collapse; font-family:'Inter',sans-serif; font-size: 13px; text-align: left;">
             <thead>
               <tr class="surface-panel border-b">
-                <th style="padding: 12px 16px; color: var(--text-secondary); font-weight: 500;">URL</th>
-                <th style="padding: 12px 16px; color: var(--text-secondary); font-weight: 500;">Title</th>
-                <th style="padding: 12px 16px; color: var(--text-secondary); font-weight: 500;">Status</th>
-                <th style="padding: 12px 16px; color: var(--text-secondary); font-weight: 500;">Actions</th>
+                <th class="th-cell">URL</th>
+                <th class="th-cell">Title</th>
+                <th class="th-cell">Status</th>
+                <th class="th-cell">Actions</th>
               </tr>
             </thead>
             <tbody id="crawl-results-table-body">
@@ -449,16 +489,16 @@
     
     <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 20px;">
       <!-- Destinations Admin Panel -->
-      <div class="crawl-card" style="padding: 20px;">
-        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Vector DB Destinations</h3>
-        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <input type="text" id="admin-dest-name" class="form-control" placeholder="Name" style="flex:1; height:36px; padding:0 10px; border-radius:6px;">
+      <div class="crawl-card" class="pad-xl">
+        <h3 class="sub-heading">Vector DB Destinations</h3>
+        <div class="row mb-3">
+          <input type="text" id="admin-dest-name" class="form-control" placeholder="Name" class="ctrl">
           <select id="admin-dest-type" class="form-control" style="height:36px; padding:0 8px; border-radius:6px;">
             <option value="pinecone">pinecone</option>
             <option value="weaviate">weaviate</option>
             <option value="supabase">supabase</option>
           </select>
-          <button id="admin-dest-add-btn" class="send-btn" style="padding:0 14px; font-size:13px;">Add</button>
+          <button id="admin-dest-add-btn" class="send-btn" class="btn-pad">Add</button>
         </div>
         <input type="text" id="admin-dest-config" class="form-control" placeholder='Config JSON e.g. {"url": "http://..."}' style="width:100%; height:36px; padding:0 10px; margin-bottom:12px; border-radius:6px;">
         <div id="admin-dest-list" style="max-height: 180px; overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
@@ -467,12 +507,12 @@
       </div>
 
       <!-- Schedules Admin Panel -->
-      <div class="crawl-card" style="padding: 20px;">
-        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Scheduled Crawls</h3>
-        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+      <div class="crawl-card" class="pad-xl">
+        <h3 class="sub-heading">Scheduled Crawls</h3>
+        <div class="row mb-3">
           <input type="text" id="admin-sched-url" class="form-control" placeholder="https://example.com" style="flex:2; height:36px; padding:0 10px; border-radius:6px;">
-          <input type="text" id="admin-sched-cron" class="form-control" placeholder="0 0 * * *" style="flex:1; height:36px; padding:0 10px; border-radius:6px;">
-          <button id="admin-sched-add-btn" class="send-btn" style="padding:0 14px; font-size:13px;">Add</button>
+          <input type="text" id="admin-sched-cron" class="form-control" placeholder="0 0 * * *" class="ctrl">
+          <button id="admin-sched-add-btn" class="send-btn" class="btn-pad">Add</button>
         </div>
         <div id="admin-sched-list" style="max-height: 220px; overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
           <div class="empty-state">No schedules configured</div>
@@ -480,22 +520,22 @@
       </div>
 
       <!-- Batch Upload Admin Panel -->
-      <div class="crawl-card" style="padding: 20px;">
-        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Batch Crawl Upload</h3>
+      <div class="crawl-card" class="pad-xl">
+        <h3 class="sub-heading">Batch Crawl Upload</h3>
         <input type="file" id="admin-batch-file" accept=".csv,.txt" style="margin-bottom: 12px; color: var(--text-primary); display:block;">
-        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <input type="text" id="admin-batch-webhook" class="form-control" placeholder="Optional Webhook URL" style="flex:1; height:36px; padding:0 10px; border-radius:6px;">
+        <div class="row mb-3">
+          <input type="text" id="admin-batch-webhook" class="form-control" placeholder="Optional Webhook URL" class="ctrl">
           <button id="admin-batch-start-btn" class="send-btn" style="padding:0 16px; font-size:13px;">Upload & Start</button>
         </div>
         <div id="admin-batch-status" style="font-size:13px; color:var(--text-secondary);"></div>
       </div>
 
       <!-- Proxies Admin Panel -->
-      <div class="crawl-card" style="padding: 20px;">
-        <h3 style="font-size: 16px; margin-bottom: 12px; color: var(--text-primary);">Proxies Management</h3>
-        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
-          <input type="text" id="admin-proxy-url" class="form-control" placeholder="http://user:pass@host:port" style="flex:1; height:36px; padding:0 10px; border-radius:6px;">
-          <button id="admin-proxy-add-btn" class="send-btn" style="padding:0 14px; font-size:13px;">Add</button>
+      <div class="crawl-card" class="pad-xl">
+        <h3 class="sub-heading">Proxies Management</h3>
+        <div class="row mb-3">
+          <input type="text" id="admin-proxy-url" class="form-control" placeholder="http://user:pass@host:port" class="ctrl">
+          <button id="admin-proxy-add-btn" class="send-btn" class="btn-pad">Add</button>
         </div>
         <div id="admin-proxy-list" style="max-height: 220px; overflow-y: auto; display:flex; flex-direction:column; gap:8px;">
           <div class="empty-state">No proxies configured</div>

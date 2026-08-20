@@ -45,6 +45,34 @@ class CrawlixClient:
         self._check_response(response)
         return response.json()
 
+    # --- Map (URL discovery) Endpoint ---
+    def map(self, url: str, **kwargs) -> dict[str, Any]:
+        """Discover the URLs of a site via sitemap.xml and link-based BFS."""
+        payload = {"url": url}
+        payload.update(kwargs)
+        response = self.client.post("/api/map", json=payload)
+        self._check_response(response)
+        return response.json()
+
+    # --- Search Endpoint ---
+    def search(self, query: str, **kwargs) -> dict[str, Any]:
+        """Search the web. Optionally fetch content of top results via fetch_content=True."""
+        payload = {"query": query}
+        payload.update(kwargs)
+        response = self.client.post("/api/search", json=payload)
+        self._check_response(response)
+        return response.json()
+
+    # --- MCP Endpoint ---
+    def mcp(self, method: str, params: dict | None = None, id: int = 1) -> dict[str, Any]:
+        """Call the MCP JSON-RPC endpoint directly (initialize, tools/list, tools/call...)."""
+        body = {"jsonrpc": "2.0", "id": id, "method": method}
+        if params is not None:
+            body["params"] = params
+        response = self.client.post("/mcp", json=body)
+        self._check_response(response)
+        return response.json()
+
     def _check_response(self, response: httpx.Response):
         if not response.is_success:
             try:
@@ -88,6 +116,28 @@ class AsyncCrawlixClient:
 
     async def delete_crawl(self, crawl_id: str) -> dict[str, Any]:
         response = await self.client.delete(f"/api/crawl/{crawl_id}")
+        self._check_response(response)
+        return response.json()
+
+    async def map(self, url: str, **kwargs) -> dict[str, Any]:
+        payload = {"url": url}
+        payload.update(kwargs)
+        response = await self.client.post("/api/map", json=payload)
+        self._check_response(response)
+        return response.json()
+
+    async def search(self, query: str, **kwargs) -> dict[str, Any]:
+        payload = {"query": query}
+        payload.update(kwargs)
+        response = await self.client.post("/api/search", json=payload)
+        self._check_response(response)
+        return response.json()
+
+    async def mcp(self, method: str, params: dict | None = None, id: int = 1) -> dict[str, Any]:
+        body = {"jsonrpc": "2.0", "id": id, "method": method}
+        if params is not None:
+            body["params"] = params
+        response = await self.client.post("/mcp", json=body)
         self._check_response(response)
         return response.json()
 

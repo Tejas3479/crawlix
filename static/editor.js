@@ -53,9 +53,9 @@ export function createKvRow(containerId, key = "", value = "") {
   row.style.border = "1px solid rgba(255,255,255,0.06)";
 
   row.innerHTML = `
-    <input type="text" class="kv-key-input" placeholder="Key" value="${escapeHtml(key)}" aria-label="Header or Cookie Key" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-    <input type="text" class="kv-value-input" placeholder="Value" value="${escapeHtml(value)}" aria-label="Header or Cookie Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-    <button class="remove-kv-btn icon-btn" aria-label="Remove item" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+    <input type="text" class="kv-key-input" placeholder="Key" value="${escapeHtml(key)}" aria-label="Header or Cookie Key" class="ctrl-sm">
+    <input type="text" class="kv-value-input" placeholder="Value" value="${escapeHtml(value)}" aria-label="Header or Cookie Value" class="ctrl-sm">
+    <button class="remove-kv-btn icon-btn" aria-label="Remove item" class="icon-box" style="color:var(--danger-color); border-color:rgba(248,113,113,0.2);"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
   `;
 
   row.querySelector(".remove-kv-btn").addEventListener("click", () => {
@@ -144,6 +144,7 @@ asyncio.run(fetch())
     let extraParams = "";
     if (req.css_selector) extraParams += `,\n            css_selector="${req.css_selector}"`;
     if (req.llm_model) extraParams += `,\n            llm_model="${req.llm_model}"`;
+    if (req.llm_provider) extraParams += `,\n            llm_provider="${req.llm_provider}"`;
     if (req.json_schema) extraParams += `,\n            json_schema=${JSON.stringify(req.json_schema)}`;
 
     return `from curl_cffi.requests import AsyncSession
@@ -226,7 +227,7 @@ export function setupOutputFormatToggle() {
   const jsonSchemaCollapsible = document.getElementById("json-schema-collapsible");
 
   function updateVisibility() {
-    const isStructured = formatSelect && formatSelect.value === "structured";
+    const isStructured = formatSelect && (formatSelect.value === "structured" || formatSelect.value === "css");
     if (jsonSchemaCollapsible) {
       jsonSchemaCollapsible.style.display = isStructured ? "block" : "none";
     }
@@ -258,10 +259,10 @@ export function createActionRow(action = {}) {
       <option value="hover">Hover</option>
       <option value="press">Press Key</option>
     </select>
-    <input type="text" class="action-selector-input" placeholder="CSS Selector" aria-label="Action CSS Selector" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
-    <input type="text" class="action-value-input" placeholder="Value (for Fill/Press)" aria-label="Action Value" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; flex:1;">
+    <input type="text" class="action-selector-input" placeholder="CSS Selector" aria-label="Action CSS Selector" class="ctrl-sm">
+    <input type="text" class="action-value-input" placeholder="Value (for Fill/Press)" aria-label="Action Value" class="ctrl-sm">
     <input type="number" class="action-duration-input hidden" placeholder="Seconds" aria-label="Action Duration in Seconds" style="height:36px; padding:0 8px; border-radius:6px; border:1px solid rgba(255,255,255,0.1); background:rgba(0,0,0,0.2); color:#e2e2e2; font-size:12px; width:70px; flex-shrink:0;">
-    <button class="remove-action-btn icon-btn" aria-label="Remove browser action" style="height:36px; width:36px; padding:0; display:flex; align-items:center; justify-content:center; border-radius:6px; color:var(--danger-color); border-color:rgba(248,113,113,0.2);"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+    <button class="remove-action-btn icon-btn" aria-label="Remove browser action" class="icon-box" style="color:var(--danger-color); border-color:rgba(248,113,113,0.2);"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
   `;
 
   const typeSelect = row.querySelector(".action-type-select");
@@ -510,6 +511,7 @@ export function restoreBuilderStateUI(savedRequest) {
   document.getElementById("scroll-checkbox").checked = !!savedRequest.scroll;
   document.getElementById("strip-links-checkbox").checked = !!savedRequest.strip_links;
   document.getElementById("screenshot-checkbox").checked = !!savedRequest.screenshot;
+  document.getElementById("bypass-cache-checkbox").checked = !!savedRequest.bypass_cache;
 
   const waitUntilSelect = document.getElementById("wait-until-select");
   if (waitUntilSelect && savedRequest.wait_until) waitUntilSelect.value = savedRequest.wait_until;
@@ -534,6 +536,9 @@ export function restoreBuilderStateUI(savedRequest) {
 
   const llmModelInput = document.getElementById("llm-model-input");
   if (llmModelInput) llmModelInput.value = savedRequest.llm_model || "";
+
+  const llmProviderSelect = document.getElementById("llm-provider-select");
+  if (llmProviderSelect) llmProviderSelect.value = savedRequest.llm_provider || "openai";
 
   const proxyInput = document.getElementById("proxy-input");
   if (proxyInput) proxyInput.value = (savedRequest.proxy && savedRequest.proxy.url) ? savedRequest.proxy.url : "";

@@ -230,10 +230,21 @@ export async function startCrawlJob() {
     stealth: document.getElementById("crawl-stealth-checkbox").checked,
     output_format: document.getElementById("crawl-format-select").value,
     limit_domain: document.getElementById("crawl-limit-domain-checkbox").checked,
+    respect_robots: document.getElementById("crawl-respect-robots-checkbox").checked,
     destinations: destinations,
     actions: [],
     extraction_prompt: document.getElementById("crawl-extraction-prompt")?.value.trim() || null
   };
+
+  const schemaEl = document.getElementById("crawl-json-schema");
+  if (schemaEl && schemaEl.value.trim()) {
+    try {
+      payload.json_schema = JSON.parse(schemaEl.value.trim());
+    } catch (e) {
+      showToast("Invalid JSON schema for crawl", "error");
+      return;
+    }
+  }
 
   try {
     const headers = { "Content-Type": "application/json" };

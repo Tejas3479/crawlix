@@ -1,4 +1,6 @@
 import asyncio
+import hashlib
+import hmac
 import json
 import logging
 import os
@@ -29,6 +31,9 @@ from fetcher import is_ssrf_safe, playwright_mgr, run_fetch
 logger = logging.getLogger("crawlix.worker")
 
 REDIS_URL = os.getenv("REDIS_URL", "redis://localhost:6379/0")
+WEBHOOK_SECRET = os.getenv("WEBHOOK_SECRET", "")
+WEBHOOK_MAX_RETRIES = int(os.getenv("WEBHOOK_MAX_RETRIES", "3"))
+
 
 def get_redis_settings() -> RedisSettings:
     parsed = urlparse(REDIS_URL)
@@ -37,17 +42,42 @@ def get_redis_settings() -> RedisSettings:
     database = int(parsed.path.lstrip("/")) if parsed.path and parsed.path.lstrip("/") else 0
     return RedisSettings(host=host, port=port, database=database)
 
-async def notify_webhook(webhook_url: str, payload: dict):
+
+def _sign_payload(body: bytes, secret: str | None = None) -> str:
+    secret = os.getenv("WEBHOOK_SECRET", "") if secret is None else secret
+    if not secret:
+        return ""
+    return hmac.new(secret.encode("utf-8"), body, hashlib.sha256).hexdigest()
+
+
+async def notify_webhook(webhook_url: str, payload: dict, max_retries: int = WEBHOOK_MAX_RETRIES):
     if not webhook_url:
         return
     try:
         if not await is_ssrf_safe(webhook_url):
             logger.error(f"Webhook URL blocked by SSRF protection: {webhook_url}")
             return
-            
+
+        body = json.dumps(payload, default=str).encode("utf-8")
+        headers = {"Content-Type": "application/json"}
+        if os.getenv("WEBHOOK_SECRET"):
+            headers["X-Crawlix-Signature"] = "sha256=" + _sign_payload(body)
+
         async with httpx.AsyncClient(timeout=15.0, follow_redirects=False) as client:
-            resp = await client.post(webhook_url, json=payload)
-            logger.info(f"Webhook notification sent to {webhook_url}, status: {resp.status_code}")
+            for attempt in range(1, max_retries + 1):
+                try:
+                    resp = await client.post(webhook_url, content=body, headers=headers)
+                    if resp.status_code < 400:
+                        logger.info(f"Webhook notification sent to {webhook_url}, status: {resp.status_code}")
+                        return
+                    logger.warning(
+                        f"Webhook {webhook_url} returned HTTP {resp.status_code} (attempt {attempt}/{max_retries})."
+                    )
+                except Exception as e:
+                    logger.warning(f"Webhook {webhook_url} send failed (attempt {attempt}/{max_retries}): {e}")
+                if attempt < max_retries:
+                    await asyncio.sleep(2.0 * (2 ** (attempt - 1)))
+            logger.error(f"Webhook {webhook_url} failed after {max_retries} attempts.")
     except Exception as e:
         logger.error(f"Failed to send webhook to {webhook_url}: {e}")
 
@@ -222,7 +252,9 @@ async def run_scheduled_crawls_cron(ctx: dict):
                             payload.get("actions"),
                             payload.get("extraction_prompt"),
                             payload.get("stealth", False),
-                            job.webhook_url
+                            job.webhook_url,
+                            payload.get("respect_robots", True),
+                            payload.get("json_schema")
                         )
                 
                 # Update next run time
@@ -245,7 +277,9 @@ async def run_crawl_task(
     actions: list | None,
     extraction_prompt: str | None = None,
     stealth: bool = False,
-    webhook_url: str | None = None
+    webhook_url: str | None = None,
+    respect_robots: bool = True,
+    json_schema: dict | None = None
 ):
     from fetcher import crawl_manager
     logger.info(f"ARQ Worker starting crawl job {crawl_id} for URL {seed_url}")
@@ -265,7 +299,9 @@ async def run_crawl_task(
             actions=actions,
             extraction_prompt=extraction_prompt,
             stealth=stealth,
-            webhook_url=webhook_url
+            webhook_url=webhook_url,
+            respect_robots=respect_robots,
+            json_schema=json_schema
         )
 
         # Fetch completed job and trigger webhook / destinations

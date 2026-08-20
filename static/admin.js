@@ -344,12 +344,12 @@ export async function renderAdmin() {
           destList.innerHTML = '<div class="empty-state">No destinations configured</div>';
         } else {
           destList.innerHTML = list.map(d => `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
+            <div class="list-row">
               <div>
-                <b style="color:var(--text-primary); font-size:13px;">${escapeHtml(d.name)}</b>
+                <b class="text-primary fs-13">${escapeHtml(d.name)}</b>
                 <span style="color:var(--accent); font-size:11px; margin-left:6px;">(${escapeHtml(d.type)})</span>
               </div>
-              <button class="delete-dest-btn icon-btn" data-id="${d.id}" style="color:#ef4444;" title="Delete" aria-label="Delete destination ${escapeHtml(d.name)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+              <button class="delete-dest-btn icon-btn" data-id="${d.id}" class="danger-accent" title="Delete" aria-label="Delete destination ${escapeHtml(d.name)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
             </div>
           `).join("");
 
@@ -370,7 +370,7 @@ export async function renderAdmin() {
           });
         }
       } catch (err) {
-        destList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
+        destList.innerHTML = `<div class="empty-state" class="danger-accent">Error: ${escapeHtml(err.message)}</div>`;
         showToast("Failed to load destinations: " + err.message, "error");
       }
     }
@@ -390,12 +390,12 @@ export async function renderAdmin() {
           schedList.innerHTML = '<div class="empty-state">No schedules configured</div>';
         } else {
           schedList.innerHTML = list.map(s => `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
+            <div class="list-row">
               <div>
-                <b style="color:var(--text-primary); font-size:13px;">${escapeHtml((s.payload && s.payload.url) || 'Schedule')}</b>
+                <b class="text-primary fs-13">${escapeHtml((s.payload && s.payload.url) || 'Schedule')}</b>
                 <span style="color:var(--accent); font-size:11px; margin-left:6px;">[${escapeHtml(s.cron_expression)}]</span>
               </div>
-              <button class="delete-sched-btn icon-btn" data-id="${s.id}" style="color:#ef4444;" title="Delete" aria-label="Delete schedule ${escapeHtml((s.payload && s.payload.url) || s.id)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+              <button class="delete-sched-btn icon-btn" data-id="${s.id}" class="danger-accent" title="Delete" aria-label="Delete schedule ${escapeHtml((s.payload && s.payload.url) || s.id)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
             </div>
           `).join("");
 
@@ -416,7 +416,7 @@ export async function renderAdmin() {
           });
         }
       } catch (err) {
-        schedList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
+        schedList.innerHTML = `<div class="empty-state" class="danger-accent">Error: ${escapeHtml(err.message)}</div>`;
         showToast("Failed to load schedules: " + err.message, "error");
       }
     }
@@ -436,14 +436,14 @@ export async function renderAdmin() {
           proxyList.innerHTML = '<div class="empty-state">No proxies configured</div>';
         } else {
           proxyList.innerHTML = list.map(p => `
-            <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(255,255,255,0.03); padding:8px 12px; border-radius:6px;">
+            <div class="list-row">
               <div>
-                <span style="color:var(--text-primary); font-size:13px;">${escapeHtml(p.url)}</span>
+                <span class="text-primary fs-13">${escapeHtml(p.url)}</span>
                 <span style="color:${p.is_active ? '#22c55e' : '#ef4444'}; font-size:11px; margin-left:6px;">
                   ${p.is_active ? 'Active' : 'Inactive'} (Fails: ${p.fail_count})
                 </span>
               </div>
-              <button class="delete-proxy-btn icon-btn" data-id="${p.id}" style="color:#ef4444;" title="Delete" aria-label="Delete proxy ${escapeHtml(p.url)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
+              <button class="delete-proxy-btn icon-btn" data-id="${p.id}" class="danger-accent" title="Delete" aria-label="Delete proxy ${escapeHtml(p.url)}"><svg class="icon" aria-hidden="true"><use href="#icon-close"/></svg></button>
             </div>
           `).join("");
 
@@ -464,7 +464,7 @@ export async function renderAdmin() {
           });
         }
       } catch (err) {
-        proxyList.innerHTML = `<div class="empty-state" style="color:#ef4444;">Error: ${escapeHtml(err.message)}</div>`;
+        proxyList.innerHTML = `<div class="empty-state" class="danger-accent">Error: ${escapeHtml(err.message)}</div>`;
         showToast("Failed to load proxies: " + err.message, "error");
       }
     }

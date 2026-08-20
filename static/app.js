@@ -524,6 +524,77 @@ document.addEventListener("DOMContentLoaded", () => {
   const crawlStartBtn = document.getElementById("crawl-start-btn");
   if (crawlStartBtn) crawlStartBtn.addEventListener("click", startCrawlJob);
 
+  const mapStartBtn = document.getElementById("map-start-btn");
+  if (mapStartBtn) {
+    mapStartBtn.addEventListener("click", async () => {
+      const mapUrlInput = document.getElementById("map-url-input");
+      let mapUrl = mapUrlInput ? mapUrlInput.value.trim() : "";
+      if (!mapUrl) {
+        showToast("Map URL is required", "error");
+        if (mapUrlInput) mapUrlInput.focus();
+        return;
+      }
+      if (!mapUrl.startsWith("http://") && !mapUrl.startsWith("https://")) {
+        mapUrl = "https://" + mapUrl;
+        if (mapUrlInput) mapUrlInput.value = mapUrl;
+      }
+      if (!isValidHttpUrl(mapUrl)) {
+        showToast("Please enter a valid HTTP or HTTPS URL", "error");
+        return;
+      }
+
+      const limitEl = document.getElementById("map-limit-input");
+      const limit = Math.max(1, parseInt(limitEl ? limitEl.value : "100", 10) || 100);
+      const resultsEl = document.getElementById("map-results");
+      if (resultsEl) resultsEl.innerHTML = '<div class="empty-state" style="padding:16px;">Mapping…</div>';
+
+      mapStartBtn.disabled = true;
+      mapStartBtn.textContent = "Mapping…";
+      try {
+        const headers = { "Content-Type": "application/json" };
+        if (state.apiKey) headers["x-api-key"] = state.apiKey;
+        const res = await fetch("/api/map", {
+          method: "POST",
+          headers,
+          body: JSON.stringify({ url: mapUrl, limit })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+          throw new Error(data.error_message || data.detail || "Map failed");
+        }
+        if (!data.urls || data.urls.length === 0) {
+          if (resultsEl) resultsEl.innerHTML = '<div class="empty-state" style="padding:16px;">No URLs discovered.</div>';
+          return;
+        }
+        if (resultsEl) {
+          resultsEl.innerHTML = `
+            <div style="padding:8px 12px; font-size:12px; color:var(--text-secondary); border-bottom:1px solid rgba(255,255,255,0.06); display:flex; justify-content:space-between;">
+              <span>${data.count} URL${data.count === 1 ? "" : "s"} (via ${escapeHtml(data.discovered_via || "link")})</span>
+              <button id="map-copy-btn" class="icon-btn" style="height:28px; font-size:12px;">Copy</button>
+            </div>
+            ${data.urls.map((u) => `
+              <div style="padding:6px 12px; border-bottom:1px solid rgba(255,255,255,0.04); font-size:13px;">
+                <a href="${escapeHtml(u)}" target="_blank" rel="noopener noreferrer" style="color:var(--accent-color); text-decoration:none; word-break:break-all;">${escapeHtml(u)}</a>
+              </div>`).join("")}
+          `;
+          const copyBtn = document.getElementById("map-copy-btn");
+          if (copyBtn) {
+            copyBtn.addEventListener("click", () => {
+              navigator.clipboard.writeText(data.urls.join("\n")).then(() => showToast("URLs copied", "success", 1500));
+            });
+          }
+        }
+        showToast(`Mapped ${data.count} URLs`, "success", 2000);
+      } catch (err) {
+        if (resultsEl) resultsEl.innerHTML = `<div class="error-state-container" style="padding:16px;"><span>${escapeHtml(err.message || "Map failed")}</span></div>`;
+        showToast("Map failed: " + (err.message || "unknown"), "error");
+      } finally {
+        mapStartBtn.disabled = false;
+        mapStartBtn.textContent = "Map";
+      }
+    });
+  }
+
   setupEnvPanel();
   const apiKeyInput = document.getElementById("api-key-input");
   if (apiKeyInput) apiKeyInput.value = state.apiKey;
@@ -631,6 +702,7 @@ document.addEventListener("DOMContentLoaded", () => {
         stealth: document.getElementById("stealth-checkbox").checked,
         scroll: document.getElementById("scroll-checkbox").checked,
         strip_links: document.getElementById("strip-links-checkbox").checked,
+        bypass_cache: document.getElementById("bypass-cache-checkbox").checked,
         output_format: document.getElementById("output-format-select").value,
         impersonate: document.getElementById("impersonate-select").value,
         max_retries: 2,
@@ -639,6 +711,7 @@ document.addEventListener("DOMContentLoaded", () => {
         wait_for_selector: document.getElementById("wait-selector-input").value.trim() || null,
         css_selector: document.getElementById("css-selector-input").value.trim() || null,
         llm_model: document.getElementById("llm-model-input").value.trim() || null,
+        llm_provider: document.getElementById("llm-provider-select").value || "openai",
         json_schema: schemaResult.schema,
         actions: parseActions(),
         screenshot: document.getElementById("screenshot-checkbox").checked,
