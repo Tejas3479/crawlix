@@ -25,20 +25,24 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     libxfixes3 \
     libxrandr2 \
     libgbm1 \
-    libasound2 \
+    libasound2t64 \
     libpango-1.0-0 \
     libcairo2 \
     libx11-6 \
     libxcb1 \
     libxext6 \
+    libxshmfence1 \
+    libegl1 \
+    libgles2 \
+    fonts-liberation \
+    fonts-unifont \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt .
 RUN pip install -r requirements.txt
 
 # Chromium browser engine for JS rendering + anti-bot path
-RUN python -m playwright install chromium --with-deps && \
-    python -m playwright install-deps chromium
+RUN python -m playwright install chromium
 
 COPY . .
 
