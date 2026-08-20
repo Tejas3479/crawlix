@@ -10,6 +10,7 @@ from captcha_solver import CaptchaDetector
 from database import ProxyManager
 
 from .browser_manager import PlaywrightManager
+from .browser_manager import playwright_mgr as default_playwright_mgr
 from .cache import cache_get, cache_key, cache_set
 from .content import process_content
 from .log_filter import logger, sanitize_proxy_url, sanitize_url
@@ -18,24 +19,24 @@ from .ssrf import is_ssrf_safe
 
 async def run_fetch(
     url: str,
-    method: str,
-    headers: dict,
-    cookies: dict,
-    body: str | None,
-    json_body: dict | None,
-    session: dict | None,
-    render_js: bool,
-    scroll: bool,
-    proxy_url: str | None,
-    max_retries: int,
-    timeout: int,
-    impersonate: str,
-    playwright_mgr: "PlaywrightManager",
-    output_format: str,
-    strip_links: bool,
-    llm_api_key: str | None,
-    llm_provider: str,
-    json_schema: dict | None,
+    method: str = "GET",
+    headers: dict | None = None,
+    cookies: dict | None = None,
+    body: str | None = None,
+    json_body: dict | None = None,
+    session: dict | None = None,
+    render_js: bool = False,
+    scroll: bool = False,
+    proxy_url: str | None = None,
+    max_retries: int = 1,
+    timeout: int = 30,
+    impersonate: str = "chrome120",
+    playwright_mgr: "PlaywrightManager | None" = None,
+    output_format: str = "markdown",
+    strip_links: bool = False,
+    llm_api_key: str | None = None,
+    llm_provider: str = "openai",
+    json_schema: dict | None = None,
     wait_for_selector: str | None = None,
     wait_timeout: int = 30,
     css_selector: str | None = None,
@@ -54,6 +55,8 @@ async def run_fetch(
     """
     import time as _time
     _t0 = _time.monotonic()
+    headers = headers or {}
+    cookies = cookies or {}
     # 1. SSRF Safety Check (async-safe DNS resolution)
     if not await is_ssrf_safe(url):
         logger.warning(f"Blocking request to restricted URL: {url}")
@@ -180,7 +183,10 @@ async def run_fetch(
 
             else:
                 # PLAYWRIGHT PATH
-                async with playwright_mgr.acquire_context(current_proxy, headers, stealth=stealth) as context:
+                pw_mgr = playwright_mgr or default_playwright_mgr
+                if pw_mgr is None:
+                    raise RuntimeError("Playwright manager is not available")
+                async with pw_mgr.acquire_context(current_proxy, headers, stealth=stealth) as context:
                     async def route_interceptor(route):
                         req_url = route.request.url
                         if route.request.resource_type == "document" and not await is_ssrf_safe(req_url):

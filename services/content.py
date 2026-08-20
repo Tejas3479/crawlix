@@ -285,7 +285,7 @@ async def _extract_llm_structured_text(
                 f"{model}:generateContent?key={api_key}"
             )
             headers = {"Content-Type": "application/json"}
-            payload: dict[str, Any] = {
+            payload = {
                 "contents": [{"parts": [{"text": system + "\n\n" + user}]}],
                 "generationConfig": {"responseMimeType": "application/json"},
             }
@@ -518,7 +518,7 @@ async def process_content(
             )
             if not current_key:
                 continue
-            target_model = llm_model if current_provider == llm_provider else default_model[current_provider]
+            target_model = llm_model if (current_provider == llm_provider and llm_model) else default_model[current_provider]
 
             for attempt in range(2):
                 prompt = user

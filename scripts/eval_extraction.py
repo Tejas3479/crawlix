@@ -122,7 +122,8 @@ def extract_crawlix(html: str, base_url: str) -> str:
 
     from services.content import process_content
 
-    return asyncio.run(process_content(html, "markdown", base_url))
+    res = asyncio.run(process_content(html, "markdown", base_url))
+    return str(res) if not isinstance(res, str) else res
 
 
 def extract_full_text(html: str, base_url: str) -> str:

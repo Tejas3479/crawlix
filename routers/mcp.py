@@ -252,7 +252,11 @@ async def mcp_endpoint(request: Request):
     message_id = body.get("id")
     params = body.get("params")
 
-    response = await _dispatch(message_id, method, params)
+    if not isinstance(method, str):
+        return _rpc_error(message_id, -32600, "Invalid Request: missing or invalid method")
+
+    params_dict = params if isinstance(params, dict) else None
+    response = await _dispatch(message_id, method, params_dict)
     if response is None:
         return JSONResponse(status_code=202, content="Accepted")
     return response
