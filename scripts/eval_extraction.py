@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 """
 Crawlix extraction eval harness against the WCXB benchmark.
 
@@ -155,8 +154,8 @@ def sample_ids(gt_by_id: dict, limit: int, seed: int) -> list[str]:
     for fid, gt in gt_by_id.items():
         by_type[gt["page_type"]].append(fid)
     rng = random.Random(seed)
-    for k in by_type:
-        rng.shuffle(by_type[k])
+    for ids in by_type.values():
+        rng.shuffle(ids)
     types = sorted(by_type.keys())
     idx = {t: 0 for t in types}
     chosen: list[str] = []

@@ -9,7 +9,7 @@ import pytest
 
 from app import app
 from services.cache import cache_get, cache_key, cache_set
-from services.content import _extract_css, _validate_against_schema, process_content
+from services.content import _validate_against_schema, process_content
 
 
 @pytest.fixture(autouse=True)
@@ -243,7 +243,6 @@ def test_webhook_signature_hmac():
 
 @pytest.mark.asyncio
 async def test_notify_webhook_retries_then_succeeds():
-    import httpx
     from worker import notify_webhook
 
     calls = {"count": 0}
@@ -270,7 +269,7 @@ async def test_notify_webhook_retries_then_succeeds():
 
 @pytest.mark.asyncio
 async def test_notify_webhook_sends_signature_header():
-    from worker import WEBHOOK_SECRET, _sign_payload, notify_webhook
+    from worker import _sign_payload, notify_webhook
 
     captured = {}
 

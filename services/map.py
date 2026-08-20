@@ -1,6 +1,6 @@
 import re
 from collections import deque
-from urllib.parse import urljoin, urlparse, urldefrag
+from urllib.parse import urldefrag, urljoin, urlparse
 
 from bs4 import BeautifulSoup
 from curl_cffi.requests import AsyncSession
@@ -15,8 +15,7 @@ _WWW_RE = re.compile(r"^www\.", re.IGNORECASE)
 
 def _normalize_domain(host: str) -> str:
     host = host.lower()
-    if host.startswith("www."):
-        host = host[4:]
+    host = host.removeprefix("www.")
     return host
 
 

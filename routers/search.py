@@ -29,7 +29,6 @@ async def search_endpoint(req: SearchRequest):
 
     if req.fetch_content and results:
         fetch_limit = min(req.content_limit, len(results))
-        from models import FetchRequest
 
         for i in range(fetch_limit):
             item = results[i]
