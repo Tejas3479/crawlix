@@ -57,6 +57,11 @@ async def run_fetch(
     _t0 = _time.monotonic()
     headers = headers or {}
     cookies = cookies or {}
+    
+    if output_format == "vlm":
+        render_js = True
+        screenshot = True
+        
     # 1. SSRF Safety Check (async-safe DNS resolution)
     if not await is_ssrf_safe(url):
         logger.warning(f"Blocking request to restricted URL: {url}")
@@ -394,7 +399,8 @@ async def run_fetch(
         json_schema=json_schema,
         css_selector=css_selector,
         llm_model=llm_model,
-        extraction_prompt=extraction_prompt
+        extraction_prompt=extraction_prompt,
+        image_data=screenshot_data_url
     )
 
     _t_done = _time.monotonic()

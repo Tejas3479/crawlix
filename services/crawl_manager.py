@@ -194,6 +194,19 @@ class CrawlManager:
             session.add(job)
             await session.commit()
 
+        # Publish state to Redis for WebSockets
+        try:
+            from services.session_manager import redis_client
+            import json
+            await redis_client.publish("crawl_updates", json.dumps({
+                "crawl_id": crawl_id,
+                "status": status or job.status,
+                "pages_crawled": crawled_count,
+                "results": results
+            }))
+        except Exception as e:
+            logger.warning(f"Failed to publish crawl update to Redis: {e}")
+
     async def _run_crawl(self, crawl_id: str, seed_url: str, max_pages: int, max_depth: int, render_js: bool, output_format: str, strip_links: bool, css_selector: str | None, limit_domain: bool, actions: list | None, extraction_prompt: str | None = None, stealth: bool = False, webhook_url: str | None = None, respect_robots: bool = True, json_schema: dict | None = None):
         queue = [(seed_url, 0)] # (url, depth)
         visited = set()

@@ -191,8 +191,9 @@ async def _extract_llm_structured_text(
     user: str,
     json_schema: dict | None,
     max_tokens: int,
+    image_data: str | None = None,
 ) -> str:
-    """Single LLM call with modern structured-output params per provider.
+    """Single LLM call with modern structured-output params per provider, including optional VLM support.
 
     Falls back to older params when the provider rejects the new ones.
     Returns the raw text payload (may contain JSON).
@@ -203,11 +204,19 @@ async def _extract_llm_structured_text(
                 "Authorization": f"Bearer {api_key}",
                 "Content-Type": "application/json",
             }
+            
+            user_content = user
+            if image_data:
+                user_content = [
+                    {"type": "text", "text": user},
+                    {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
+                ]
+
             payload: dict[str, Any] = {
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": user},
+                    {"role": "user", "content": user_content},
                 ],
                 "max_tokens": max_tokens,
             }
@@ -241,11 +250,19 @@ async def _extract_llm_structured_text(
                 "anthropic-version": "2023-06-01",
                 "Content-Type": "application/json",
             }
+            
+            user_content = [{"type": "text", "text": user}]
+            if image_data:
+                user_content.insert(0, {
+                    "type": "image",
+                    "source": {"type": "base64", "media_type": "image/png", "data": image_data}
+                })
+
             payload = {
                 "model": model,
                 "max_tokens": max_tokens,
                 "system": system,
-                "messages": [{"role": "user", "content": user}],
+                "messages": [{"role": "user", "content": user_content}],
             }
             if json_schema:
                 payload["output_config"] = {
@@ -285,8 +302,14 @@ async def _extract_llm_structured_text(
                 f"{model}:generateContent?key={api_key}"
             )
             headers = {"Content-Type": "application/json"}
+            
+            parts = []
+            if image_data:
+                parts.append({"inlineData": {"mimeType": "image/png", "data": image_data}})
+            parts.append({"text": system + "\n\n" + (user if isinstance(user, str) else str(user))})
+            
             payload = {
-                "contents": [{"parts": [{"text": system + "\n\n" + user}]}],
+                "contents": [{"parts": parts}],
                 "generationConfig": {"responseMimeType": "application/json"},
             }
             if json_schema:
@@ -323,7 +346,8 @@ async def process_content(
     json_schema: dict | None = None,
     css_selector: str | None = None,
     llm_model: str | None = None,
-    extraction_prompt: str | None = None
+    extraction_prompt: str | None = None,
+    image_data: str | None = None
 ) -> str | dict | list:
     # DOM Slicing (Pruning) if css_selector is provided
     if css_selector:
@@ -379,12 +403,74 @@ async def process_content(
             return {"error": "css_extraction_failed", "error_message": "Schema missing or no elements matched. Provide a json_schema with 'fields' and a valid 'baseSelector'."}
         return extracted
 
+    if output_format == "vlm":
+        if not image_data:
+            return {"error": "vlm_extraction_failed", "error_message": "No screenshot data available. VLM extraction requires a screenshot."}
+        resolved_key = llm_api_key or os.getenv(f"{llm_provider.upper()}_API_KEY")
+        if not resolved_key:
+            return {"error": "api_key_missing", "error_message": f"An API key for {llm_provider} is required for VLM extraction."}
+            
+        system = "You are a Vision-Language Model data extractor. Extract the requested structured data purely from the provided screenshot. Return ONLY a valid JSON object matching the schema. No explanation, no markdown fences."
+        if extraction_prompt:
+            system += f"\n\nUSER INSTRUCTIONS:\n{extraction_prompt}"
+            
+        # Strip the data prefix if present for base64
+        import re
+        b64_data = re.sub(r"^data:image/[^;]+;base64,", "", image_data)
+        
+        try:
+            raw_response = await _extract_llm_structured_text(
+                provider=llm_provider,
+                model=llm_model or ("gpt-4o" if llm_provider == "openai" else "claude-3-5-sonnet-20240620" if llm_provider == "anthropic" else "gemini-1.5-flash"),
+                api_key=resolved_key,
+                system=system,
+                user="Extract data from this screenshot.",
+                json_schema=json_schema,
+                max_tokens=4000,
+                image_data=b64_data
+            )
+            import json
+            stripped = _strip_json_fences(raw_response)
+            return json.loads(stripped)
+        except Exception as e:
+            logger.error(f"VLM extraction failed: {e}")
+            return {"error": "vlm_extraction_failed", "error_message": str(e)}
+
     if output_format == "structured":
         # If the caller supplied a selector schema, prefer deterministic extraction.
         if json_schema and "fields" in json_schema and "baseSelector" in json_schema:
             extracted = _extract_css(html, json_schema)
             if extracted is not None:
                 return extracted
+            else:
+                logger.info("CSS extraction failed. Triggering self-healing semantic extraction fallback.")
+                import json
+                properties = {}
+                required = []
+                for field in json_schema.get("fields", []):
+                    fname = field.get("name")
+                    if fname:
+                        properties[fname] = {"type": "string", "description": f"Extracted from {field.get('selector', 'element')}"}
+                        required.append(fname)
+                
+                new_schema = {
+                    "type": "object",
+                    "properties": properties,
+                    "required": required,
+                    "additionalProperties": False
+                }
+                
+                base_selector = json_schema.get("baseSelector")
+                if base_selector:
+                    # If there's a base selector, it usually means a list of items
+                    new_schema = {
+                        "type": "array",
+                        "items": new_schema,
+                        "description": f"List of items matching semantic structure of {base_selector}"
+                    }
+                
+                json_schema = new_schema
+                extraction_prompt = (extraction_prompt or "") + "\n\nSELF-HEALING: The CSS extraction failed. Please extract the semantic equivalent fields based on the provided schema."
 
         resolved_key = llm_api_key or os.getenv(f"{llm_provider.upper()}_API_KEY")
 

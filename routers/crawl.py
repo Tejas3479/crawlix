@@ -10,6 +10,8 @@ from fastapi import (
     HTTPException,
     Request,
     UploadFile,
+    WebSocket,
+    WebSocketDisconnect
 )
 from fastapi.responses import FileResponse
 
@@ -75,9 +77,8 @@ async def create_batch_crawl(
     output_format: str = "markdown",
     webhook_url: str | None = None,
 ):
-    content = await file.read()
-    lines = content.decode("utf-8", errors="ignore").splitlines()
-    reader = csv.reader(lines)
+    import codecs
+    reader = csv.reader(codecs.iterdecode(file.file, 'utf-8', errors='ignore'))
     urls = []
     for row in reader:
         for col in row:
@@ -172,3 +173,19 @@ async def download_batch_results(batch_id: str):
             filename=f"batch_{batch_id}.json",
             media_type="application/json",
         )
+
+@router.websocket("/api/ws/crawls")
+async def websocket_crawls(websocket: WebSocket):
+    await websocket.accept()
+    from services.session_manager import redis_client
+    pubsub = redis_client.pubsub()
+    await pubsub.subscribe("crawl_updates")
+    import asyncio
+    try:
+        while True:
+            message = await pubsub.get_message(ignore_subscribe_messages=True, timeout=1.0)
+            if message and message.get("type") == "message":
+                await websocket.send_text(message["data"])
+            await asyncio.sleep(0.01)
+    except WebSocketDisconnect:
+        await pubsub.unsubscribe("crawl_updates")
