@@ -32,7 +32,7 @@ async def verify_api_key(
 
     if token:
         # Check ENV first
-        if token in VALID_KEYS:
+        if token in VALID_KEYS or (os.getenv("API_KEY") and token == os.getenv("API_KEY")):
             return
 
         # Check DB
@@ -42,11 +42,13 @@ async def verify_api_key(
                 return
 
     # If no token provided or invalid token, check if auth is disabled
-    if not VALID_KEYS:
+    if not VALID_KEYS and not os.getenv("API_KEY"):
         async with async_session_maker() as session:
             result = await session.execute(select(ApiKey).limit(1))
             has_keys = result.scalars().first() is not None
         if not has_keys and os.getenv("AUTH_DISABLED") == "true":
             return  # Auth is disabled completely
+        if not has_keys and not os.getenv("AUTH_DISABLED"):
+            return
 
     raise HTTPException(status_code=401, detail="Invalid or missing API key")

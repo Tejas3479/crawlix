@@ -67,6 +67,8 @@ async def fetch_endpoint(req: FetchRequest):
         wait_until=req.wait_until,
         stealth=req.stealth,
         bypass_cache=req.bypass_cache,
+        compress_tokens=req.compress_tokens,
+        auto_dismiss_banners=req.auto_dismiss_banners,
     )
 
     latency_ms = int((time.monotonic() - start) * 1000)
@@ -93,6 +95,55 @@ async def fetch_endpoint(req: FetchRequest):
     )
 
 
+# POST /api/schema/generate
+@router.post(
+    "/api/schema/generate",
+    dependencies=[Depends(verify_api_key)],
+)
+async def generate_schema_endpoint(req: dict):
+    start = time.monotonic()
+    url = req.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="Target url is required")
+        
+    render_js = bool(req.get("render_js", False))
+    llm_provider = req.get("llm_provider", "openai")
+    llm_api_key = req.get("llm_api_key")
+    extraction_goal = req.get("extraction_goal")
+
+    # Fetch page HTML
+    fetch_res = await run_fetch(
+        url=str(url),
+        method="GET",
+        output_format="html",
+        render_js=render_js,
+        stealth=True,
+        timeout=25,
+    )
+    
+    html = fetch_res.get("raw_html") or ""
+    if not html:
+        raise HTTPException(status_code=502, detail="Failed to fetch page HTML for schema analysis")
+
+    from services.content import auto_generate_schema
+    schema_res = await auto_generate_schema(
+        html=html,
+        url=str(url),
+        llm_provider=llm_provider,
+        llm_api_key=llm_api_key,
+        extraction_goal=extraction_goal,
+    )
+
+    latency_ms = int((time.monotonic() - start) * 1000)
+    return {
+        "success": True,
+        "url": str(url),
+        "schema_definition": schema_res["schema_definition"],
+        "suggested_fields": schema_res["suggested_fields"],
+        "latency_ms": latency_ms
+    }
+
+
 # GET /api/sessions
 @router.get("/api/sessions", dependencies=[Depends(verify_api_key)])
 async def list_sessions():
@@ -107,4 +158,37 @@ async def delete_session(session_id: str):
     if not await session_manager.get_session_meta(session_id):
         raise HTTPException(status_code=404, detail="Session not found")
     await session_manager.delete_session(session_id)
-    return {"deleted": True, "session_id": session_id}
+    return {"message": f"Session '{session_id}' deleted"}
+
+
+# POST /api/diff
+@router.post("/api/diff", dependencies=[Depends(verify_api_key)])
+async def diff_endpoint(req: dict):
+    start = time.monotonic()
+    old_content = req.get("old_content") or ""
+    new_content = req.get("new_content")
+    url = req.get("url")
+
+    if url and new_content is None:
+        fetch_res = await run_fetch(
+            url=str(url),
+            method="GET",
+            output_format="markdown",
+            timeout=25,
+            bypass_cache=True,
+        )
+        new_content = str(fetch_res.get("content") or "")
+
+    if new_content is None:
+        raise HTTPException(status_code=400, detail="Either 'new_content' or 'url' must be provided")
+
+    from services.content import compute_content_diff
+    diff_res = compute_content_diff(old_content, new_content)
+    latency_ms = int((time.monotonic() - start) * 1000)
+
+    return {
+        "success": True,
+        "url": url,
+        "latency_ms": latency_ms,
+        **diff_res
+    }

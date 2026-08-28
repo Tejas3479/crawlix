@@ -24,7 +24,18 @@ if "sqlite" not in DATABASE_URL:
 else:
     _engine_kwargs["connect_args"] = {"timeout": 30.0}
 
+from sqlalchemy import event
+
 engine = create_async_engine(DATABASE_URL, **_engine_kwargs)
+
+if "sqlite" in DATABASE_URL:
+    @event.listens_for(engine.sync_engine, "connect")
+    def set_sqlite_pragma(dbapi_connection, connection_record):
+        cursor = dbapi_connection.cursor()
+        cursor.execute("PRAGMA journal_mode=WAL")
+        cursor.execute("PRAGMA busy_timeout=30000")
+        cursor.close()
+
 async_session_maker = sessionmaker(
     engine, class_=AsyncSession, expire_on_commit=False
 )
@@ -90,6 +101,8 @@ class BatchJob(SQLModel, table=True):  # type: ignore[call-arg]
 class ApiKey(SQLModel, table=True):  # type: ignore[call-arg]
     key: str = Field(primary_key=True)
     name: str | None = None
+    label: str | None = None
+    rate_limit: int = Field(default=60)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
 class Proxy(SQLModel, table=True):  # type: ignore[call-arg]

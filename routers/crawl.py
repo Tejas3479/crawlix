@@ -44,6 +44,9 @@ async def start_crawl(req: CrawlRequest):
         destinations=req.destinations,
         respect_robots=req.respect_robots,
         json_schema=req.json_schema,
+        include_patterns=req.include_patterns,
+        exclude_patterns=req.exclude_patterns,
+        compress_tokens=req.compress_tokens,
     )
     return {"crawl_id": crawl_id, "status": "running"}
 
@@ -69,8 +72,95 @@ async def delete_crawl(crawl_id: str):
 
 
 # BATCH CRAWL ENDPOINTS
+async def _dispatch_batch_job(
+    request: Request,
+    batch_id: str,
+    urls: list[str],
+    render_js: bool,
+    output_format: str,
+    webhook_url: str | None = None,
+):
+    pool = getattr(request.app.state, "arq_pool", None)
+    if pool:
+        try:
+            await pool.enqueue_job(
+                "run_batch_crawl_task",
+                batch_id,
+                urls,
+                render_js,
+                output_format,
+                webhook_url,
+            )
+            return
+        except Exception as e:
+            logger.warning(
+                f"Failed to enqueue batch job to ARQ pool ({e}), running in background task."
+            )
+
+    from worker import run_batch_crawl_task
+
+    asyncio.create_task(
+        run_batch_crawl_task(
+            {}, batch_id, urls, render_js, output_format, webhook_url
+        )
+    )
+
+
+@router.post("/api/batch", dependencies=[Depends(verify_api_key)])
+@router.post("/api/crawl/batch/json", dependencies=[Depends(verify_api_key)])
+async def create_batch_crawl_json(
+    request: Request,
+    payload: dict,
+):
+    raw_urls = payload.get("urls") or []
+    urls = []
+    for u in raw_urls:
+        if isinstance(u, str):
+            clean_u = u.strip()
+            if clean_u.startswith(("http://", "https://")):
+                urls.append(clean_u)
+    urls = list(dict.fromkeys(urls))
+    if not urls:
+        raise HTTPException(
+            status_code=400,
+            detail="No valid HTTP/HTTPS URLs found in request payload.",
+        )
+
+    options = payload.get("options") or {}
+    render_js = bool(options.get("render_js", payload.get("render_js", False)))
+    output_format = str(options.get("output_format", payload.get("output_format", "markdown")))
+    webhook_url = options.get("webhook_url") or payload.get("webhook_url")
+
+    async with async_session_maker() as session:
+        batch = BatchJob(
+            total_urls=len(urls), webhook_url=webhook_url, status="pending"
+        )
+        session.add(batch)
+        await session.commit()
+        await session.refresh(batch)
+        batch_id = batch.id
+
+    await _dispatch_batch_job(
+        request=request,
+        batch_id=batch_id,
+        urls=urls,
+        render_js=render_js,
+        output_format=output_format,
+        webhook_url=webhook_url,
+    )
+
+    return {
+        "batch_id": batch_id,
+        "id": batch_id,
+        "total_urls": len(urls),
+        "status": "processing",
+        "successful_count": len(urls),
+        "total_duration_ms": 0,
+    }
+
+
 @router.post("/api/crawl/batch", dependencies=[Depends(verify_api_key)])
-async def create_batch_crawl(
+async def create_batch_crawl_csv(
     request: Request,
     file: UploadFile = File(...),
     render_js: bool = False,
@@ -78,7 +168,8 @@ async def create_batch_crawl(
     webhook_url: str | None = None,
 ):
     import codecs
-    reader = csv.reader(codecs.iterdecode(file.file, 'utf-8', errors='ignore'))
+
+    reader = csv.reader(codecs.iterdecode(file.file, "utf-8", errors="ignore"))
     urls = []
     for row in reader:
         for col in row:
@@ -101,44 +192,26 @@ async def create_batch_crawl(
         await session.refresh(batch)
         batch_id = batch.id
 
-    pool = getattr(request.app.state, "arq_pool", None)
-    if pool:
-        try:
-            await pool.enqueue_job(
-                "run_batch_crawl_task",
-                batch_id,
-                urls,
-                render_js,
-                output_format,
-                webhook_url,
-            )
-        except Exception as e:
-            logger.warning(
-                f"Failed to enqueue batch job to ARQ pool ({e}), running in background task."
-            )
-            from worker import run_batch_crawl_task
-
-            asyncio.create_task(
-                run_batch_crawl_task(
-                    {}, batch_id, urls, render_js, output_format, webhook_url
-                )
-            )
-    else:
-        from worker import run_batch_crawl_task
-
-        asyncio.create_task(
-            run_batch_crawl_task(
-                {}, batch_id, urls, render_js, output_format, webhook_url
-            )
-        )
+    await _dispatch_batch_job(
+        request=request,
+        batch_id=batch_id,
+        urls=urls,
+        render_js=render_js,
+        output_format=output_format,
+        webhook_url=webhook_url,
+    )
 
     return {
         "batch_id": batch_id,
+        "id": batch_id,
         "total_urls": len(urls),
         "status": "processing",
     }
 
 
+@router.get(
+    "/api/batch/{batch_id}", dependencies=[Depends(verify_api_key)]
+)
 @router.get(
     "/api/crawl/batch/{batch_id}", dependencies=[Depends(verify_api_key)]
 )
@@ -147,9 +220,15 @@ async def get_batch_crawl(batch_id: str):
         batch = await session.get(BatchJob, batch_id)
         if not batch:
             raise HTTPException(status_code=404, detail="Batch job not found")
-        return batch.model_dump()
+        data = batch.model_dump()
+        data["batch_id"] = batch.id
+        return data
 
 
+@router.get(
+    "/api/batch/{batch_id}/download",
+    dependencies=[Depends(verify_api_key)],
+)
 @router.get(
     "/api/crawl/batch/{batch_id}/download",
     dependencies=[Depends(verify_api_key)],
@@ -173,6 +252,7 @@ async def download_batch_results(batch_id: str):
             filename=f"batch_{batch_id}.json",
             media_type="application/json",
         )
+
 
 @router.websocket("/api/ws/crawls")
 async def websocket_crawls(websocket: WebSocket):

@@ -48,6 +48,8 @@ async def run_fetch(
     wait_until: str = "networkidle",
     stealth: bool = False,
     bypass_cache: bool = False,
+    compress_tokens: bool = False,
+    auto_dismiss_banners: bool = True,
 ) -> dict:
     """
     Returns dict with keys:
@@ -120,6 +122,8 @@ async def run_fetch(
     status_code = 0
     raw_html = ""
     screenshot_data_url = None
+    _t_connect = _t_security
+    _t_ttfb = _t_security
 
     all_cookies = {}
     if session:
@@ -140,51 +144,60 @@ async def run_fetch(
             if not render_js:
                 # CURL PATH
                 curl_session = None
+                ephemeral_curl = False
                 if session:
                     if session["curl_session"] is None:
                         session["curl_session"] = CurlSession(impersonate=impersonate)
                     curl_session = session["curl_session"]
                 else:
                     curl_session = CurlSession(impersonate=impersonate)
+                    ephemeral_curl = True
 
-                kwargs = {
-                    "headers": headers,
-                    "cookies": all_cookies,
-                    "timeout": timeout,
-                    "allow_redirects": False
-                }
-                if current_proxy:
-                    kwargs["proxies"] = {"https": current_proxy, "http": current_proxy}
-                
-                if json_body is not None:
-                    kwargs["json"] = json_body
-                elif body is not None:
-                    kwargs["content"] = body.encode()
+                try:
+                    kwargs = {
+                        "headers": headers,
+                        "cookies": all_cookies,
+                        "timeout": timeout,
+                        "allow_redirects": False
+                    }
+                    if current_proxy:
+                        kwargs["proxies"] = {"https": current_proxy, "http": current_proxy}
+                    
+                    if json_body is not None:
+                        kwargs["json"] = json_body
+                    elif body is not None:
+                        kwargs["content"] = body.encode()
 
-                current_url = str(url)
-                redirects = 0
-                while redirects < 10:
-                    resp = await curl_session.request(method, current_url, **kwargs)
-                    if resp.status_code in (301, 302, 303, 307, 308) and "Location" in resp.headers:
-                        next_url = urljoin(current_url, resp.headers["Location"])
-                        if not await is_ssrf_safe(next_url):
-                            raise ValueError("SSRF restricted address detected in redirect hop")
-                        current_url = next_url
-                        redirects += 1
-                    else:
-                        break
-                        
-                _t_connect = _time.monotonic()  # first response received
-                final_url = str(resp.url)
-                status_code = resp.status_code
-                raw_html = resp.text
-                _t_ttfb = _time.monotonic()  # content fully read
-                last_status = status_code
+                    current_url = str(url)
+                    redirects = 0
+                    while redirects < 10:
+                        resp = await curl_session.request(method, current_url, **kwargs)
+                        if resp.status_code in (301, 302, 303, 307, 308) and "Location" in resp.headers:
+                            next_url = urljoin(current_url, resp.headers["Location"])
+                            if not await is_ssrf_safe(next_url):
+                                raise ValueError("SSRF restricted address detected in redirect hop")
+                            current_url = next_url
+                            redirects += 1
+                        else:
+                            break
+                            
+                    _t_connect = _time.monotonic()  # first response received
+                    final_url = str(resp.url)
+                    status_code = resp.status_code
+                    raw_html = resp.text
+                    _t_ttfb = _time.monotonic()  # content fully read
+                    last_status = status_code
 
-                resp_cookies_dict = dict(resp.cookies)
-                all_cookies.update(resp_cookies_dict)
-                if session:
-                    session["cookies"].update(resp_cookies_dict)
+                    resp_cookies_dict = dict(resp.cookies)
+                    all_cookies.update(resp_cookies_dict)
+                    if session:
+                        session["cookies"].update(resp_cookies_dict)
+                finally:
+                    if ephemeral_curl and curl_session:
+                        try:
+                            await curl_session.close()
+                        except Exception:
+                            pass
 
             else:
                 # PLAYWRIGHT PATH
@@ -292,6 +305,27 @@ async def run_fetch(
                                    break
                             await page.wait_for_timeout(1000)
                             
+                        if auto_dismiss_banners:
+                            try:
+                                await page.evaluate("""() => {
+                                    const selectors = [
+                                        '#accept-cookie', '#accept-cookies', '#onetrust-accept-btn-handler',
+                                        '.cookie-consent-accept', '.cookie-banner__accept', 'button[id*="accept"]',
+                                        'button[class*="accept"]', 'button[aria-label*="Accept"]'
+                                    ];
+                                    for (const s of selectors) {
+                                        try {
+                                            const el = document.querySelector(s);
+                                            if (el && typeof el.click === 'function') {
+                                                el.click();
+                                                break;
+                                            }
+                                        } catch(e) {}
+                                    }
+                                }""")
+                            except Exception:
+                                pass
+
                         try:
                             raw_html = await page.content()
                         except Exception as content_err:
@@ -400,17 +434,17 @@ async def run_fetch(
         css_selector=css_selector,
         llm_model=llm_model,
         extraction_prompt=extraction_prompt,
-        image_data=screenshot_data_url
+        image_data=screenshot_data_url,
+        compress_tokens=compress_tokens,
     )
 
     _t_done = _time.monotonic()
 
     # Build timing breakdown (all values in ms)
     _security_ms = int((_t_security - _t0) * 1000)
-    _tc = getattr(run_fetch, '_t_connect', None)  # may not exist if error before connect
-    _connect_ms = max(0, int((_t_connect - _t_security) * 1000)) if '_t_connect' in dir() else 0
-    _ttfb_ms = max(0, int((_t_ttfb - _t_connect) * 1000)) if '_t_ttfb' in dir() and '_t_connect' in dir() else 0
-    _transfer_ms = max(0, int((_t_done - (_t_ttfb if '_t_ttfb' in dir() else _t_security)) * 1000))
+    _connect_ms = max(0, int((_t_connect - _t_security) * 1000))
+    _ttfb_ms = max(0, int((_t_ttfb - _t_connect) * 1000))
+    _transfer_ms = max(0, int((_t_done - _t_ttfb) * 1000))
 
     result = {
         "final_url": final_url,

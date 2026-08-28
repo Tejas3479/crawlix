@@ -157,7 +157,7 @@ app.add_middleware(
     allow_origins=os.getenv("CORS_ORIGINS", "http://localhost:8000").split(
         ","
     ),
-    allow_methods=["GET", "POST", "DELETE", "OPTIONS"],
+    allow_methods=["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
     allow_headers=["*"],
     allow_credentials=False,
 )
@@ -283,8 +283,10 @@ app.include_router(map_router)
 app.include_router(search_router)
 app.include_router(mcp_router)
 
-# Mount static files
-if os.path.isdir("static"):
+# Mount static / frontend files
+if os.path.isdir("frontend/dist"):
+    app.mount("/", StaticFiles(directory="frontend/dist", html=True), name="frontend")
+elif os.path.isdir("static"):
     app.mount("/", StaticFiles(directory="static", html=True), name="static")
 
 if __name__ == "__main__":

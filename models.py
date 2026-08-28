@@ -11,21 +11,44 @@ MAX_SERVER_CRAWL_DEPTH = int(os.getenv("MAX_CRAWL_DEPTH", "10"))
 
 # ALLOWED LLM MODELS ALLOWLIST
 ALLOWED_LLM_MODELS = {
+    # OpenAI
     "gpt-5.6-sol",
     "gpt-5.6-terra",
     "gpt-5.6-luna",
-    "gpt-4o",
-    "gpt-4o-mini",
+    "gpt-5",
+    "gpt-5-mini",
     "o4-mini",
     "o3-pro",
     "o3-mini",
-    "claude-fable-5",
-    "claude-opus-5",
+    "o3",
+    "gpt-4o",
+    "gpt-4o-mini",
+    "gpt-4.5-preview",
+    "gpt-4.5",
+    "chatgpt-4o-latest",
+    # Anthropic
     "claude-sonnet-5",
+    "claude-opus-5",
+    "claude-fable-5",
+    "claude-3-7-sonnet-latest",
+    "claude-3-7-sonnet-20250219",
+    "claude-3-7-sonnet",
+    "claude-3-5-sonnet-latest",
     "claude-3-5-sonnet-20241022",
+    "claude-3-5-sonnet",
+    "claude-3-5-haiku-latest",
+    "claude-3-5-haiku-20241022",
+    # Google Gemini
     "gemini-3.6-flash",
     "gemini-3.5-flash-lite",
     "gemini-3.1-pro",
+    "gemini-2.5-flash",
+    "gemini-2.5-pro",
+    "gemini-2.5-flash-lite",
+    "gemini-2.0-flash",
+    "gemini-2.0-flash-lite",
+    "gemini-2.0-pro-exp-02-05",
+    "gemini-2.0-pro",
 }
 
 
@@ -75,7 +98,7 @@ class FetchRequest(BaseModel):
     session_id: str | None = Field(None, max_length=100)
     render_js: bool = False
     scroll: bool = False
-    output_format: Literal["html", "markdown", "structured", "css"] = "html"
+    output_format: Literal["html", "markdown", "structured", "css", "vlm", "screenshot"] = "markdown"
     strip_links: bool = False
     proxy: ProxyConfig | None = None
     max_retries: int = Field(2, ge=0, le=5)
@@ -97,6 +120,8 @@ class FetchRequest(BaseModel):
         "networkidle"
     )
     stealth: bool = False
+    compress_tokens: bool = False
+    auto_dismiss_banners: bool = True
 
     @field_validator("url")
     @classmethod
@@ -152,8 +177,8 @@ class FetchResponse(BaseModel):
 
 class CrawlRequest(BaseModel):
     url: HttpUrl
-    max_pages: int = Field(10, ge=1, le=100)
-    max_depth: int = Field(3, ge=1, le=10)
+    max_pages: int = Field(10, ge=1, le=5000)
+    max_depth: int = Field(3, ge=1, le=20)
     render_js: bool = False
     output_format: Literal["html", "markdown", "structured", "css"] = "markdown"
     strip_links: bool = False
@@ -164,6 +189,11 @@ class CrawlRequest(BaseModel):
     actions: list[ActionConfig] | None = Field(None, max_length=20)
     extraction_prompt: str | None = Field(None, max_length=5000)
     stealth: bool = False
+    compress_tokens: bool = False
+    auto_dismiss_banners: bool = True
+    include_patterns: list[str] = Field(default_factory=list)
+    exclude_patterns: list[str] = Field(default_factory=list)
+    semantic_filter: str | None = Field(None, max_length=500)
     webhook_url: HttpUrl | None = None
     destinations: list[str] | None = None
 
@@ -266,3 +296,63 @@ class ScheduleCreate(BaseModel):
 
 class ProxyCreate(BaseModel):
     url: str
+
+
+class ApiKeyCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+    rate_limit: int = Field(60, ge=1, le=10000, description="Requests per minute")
+
+
+class ApiKeyResponse(BaseModel):
+    key: str
+    name: str
+    created_at: str
+    rate_limit: int = 60
+
+
+class SchemaGenerateRequest(BaseModel):
+    url: HttpUrl
+    render_js: bool = False
+    llm_provider: Literal["openai", "anthropic", "gemini"] = "openai"
+    llm_api_key: str | None = None
+    extraction_goal: str | None = None
+
+
+class SchemaGenerateResponse(BaseModel):
+    success: bool
+    schema_definition: dict
+    suggested_fields: list[dict]
+    latency_ms: int = 0
+    error: str | None = None
+
+
+class WebhookTestRequest(BaseModel):
+    target_url: HttpUrl
+    secret: str | None = None
+    custom_payload: dict | None = None
+
+
+class WebhookTestResponse(BaseModel):
+    success: bool
+    status_code: int | None = None
+    latency_ms: int = 0
+    signature_header: str | None = None
+    error: str | None = None
+
+
+class BatchCrawlOptions(BaseModel):
+    render_js: bool = False
+    output_format: Literal["html", "markdown", "structured", "css"] = "markdown"
+    stealth: bool = True
+    compress_tokens: bool = False
+    webhook_url: HttpUrl | None = None
+
+
+class BatchCrawlJsonRequest(BaseModel):
+    urls: list[str] = Field(..., min_length=1, max_length=1000)
+    concurrency: int = Field(5, ge=1, le=50)
+    options: BatchCrawlOptions | None = None
+    render_js: bool = False
+    output_format: str = "markdown"
+    webhook_url: HttpUrl | None = None
+

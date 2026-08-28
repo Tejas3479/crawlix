@@ -12,7 +12,11 @@ if sys.platform == "win32":
     asyncio.set_event_loop_policy(asyncio.WindowsProactorEventLoopPolicy())
 
 import httpx
-import openai
+
+try:
+    import openai
+except ImportError:
+    openai = None
 from arq.connections import RedisSettings
 from arq.cron import cron
 from sqlalchemy import select

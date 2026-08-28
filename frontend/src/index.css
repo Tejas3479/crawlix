@@ -1,8 +1,122 @@
-@tailwind base;
-@tailwind components;
-@tailwind utilities;
+@import "tailwindcss";
 
-/* Custom glassmorphism classes from old UI */
+@layer base {
+  :root {
+    --bg-canvas: #fcfaf7;
+    --text-primary: #241811;
+    --text-secondary: #6e5546;
+    --text-muted: #947663;
+    --card-bg: rgba(255, 255, 255, 0.92);
+    --card-border: rgba(51, 39, 31, 0.1);
+    --input-bg: #ffffff;
+    --input-border: rgba(51, 39, 31, 0.15);
+  }
+
+  html.dark {
+    --bg-canvas: #000000;
+    --text-primary: #f5ede6;
+    --text-secondary: #bda391;
+    --text-muted: #6e5546;
+    --card-bg: rgba(18, 13, 10, 0.85);
+    --card-border: rgba(226, 135, 67, 0.16);
+    --input-bg: rgba(10, 7, 5, 0.9);
+    --input-border: rgba(255, 255, 255, 0.08);
+  }
+
+  body {
+    background-color: var(--bg-canvas);
+    color: var(--text-primary);
+    font-family: 'Inter', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    overflow-x: hidden;
+    transition: background-color 0.25s ease, color 0.25s ease;
+  }
+}
+
+/* Custom Scrollbar - Neon Caramel */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(226, 135, 67, 0.3);
+  border-radius: 4px;
+  transition: background 0.2s;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(226, 135, 67, 0.6);
+}
+
+/* Glassmorphism & UI Panels */
 .glass-panel {
-  @apply bg-black/40 backdrop-blur-xl border border-white/10 shadow-2xl;
+  background: var(--card-bg);
+  backdrop-filter: blur(20px);
+  -webkit-backdrop-filter: blur(20px);
+  border: 1px solid var(--card-border);
+}
+
+.glass-panel-interactive {
+  background: var(--card-bg);
+  backdrop-filter: blur(16px);
+  border: 1px solid var(--card-border);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+}
+
+.glass-panel-interactive:hover {
+  border-color: rgba(226, 135, 67, 0.4);
+  transform: translateY(-1px);
+  box-shadow: 0 8px 30px -4px rgba(226, 135, 67, 0.15);
+}
+
+.glass-input {
+  background: var(--input-bg);
+  border: 1px solid var(--input-border);
+  color: var(--text-primary);
+  transition: all 0.15s ease;
+}
+
+.glass-input:focus {
+  border-color: #e28743;
+  outline: none;
+  box-shadow: 0 0 0 2px rgba(226, 135, 67, 0.25);
+}
+
+/* Neon Glows */
+.glow-caramel {
+  box-shadow: 0 0 25px -2px rgba(226, 135, 67, 0.45);
+}
+
+.glow-caramel-subtle {
+  box-shadow: 0 0 15px -3px rgba(226, 135, 67, 0.22);
+}
+
+.glow-gold {
+  box-shadow: 0 0 25px -2px rgba(251, 191, 36, 0.45);
+}
+
+.glow-emerald {
+  box-shadow: 0 0 20px -3px rgba(16, 185, 129, 0.35);
+}
+
+/* Gradients */
+.bg-gradient-caramel {
+  background: linear-gradient(135deg, #e28743 0%, #c86b29 100%);
+}
+
+.bg-gradient-espresso-dark {
+  background: radial-gradient(circle at 50% 0%, rgba(226, 135, 67, 0.12) 0%, rgba(0, 0, 0, 0) 70%);
+}
+
+.bg-gradient-latte-light {
+  background: radial-gradient(circle at 50% 0%, rgba(226, 135, 67, 0.06) 0%, rgba(252, 250, 247, 0) 70%);
+}
+
+pre code, pre {
+  font-family: 'JetBrains Mono', 'Fira Code', Menlo, Monaco, Consolas, monospace;
 }

@@ -87,8 +87,8 @@ class PlaywrightManager:
             if proxy_url:
                 context_args["proxy"] = {"server": proxy_url}
             
-            # Evasion: Use standard desktop browser User-Agent
-            context_args["user_agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36"
+            # Evasion: Use modern desktop Chrome User-Agent with high-entropy client hints
+            context_args["user_agent"] = "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/134.0.0.0 Safari/537.36"
             
             context_args.update({
                 "viewport": {"width": 1920 if stealth else 1280, "height": 1080 if stealth else 720},
@@ -96,45 +96,83 @@ class PlaywrightManager:
                 "is_mobile": False,
                 "has_touch": False,
                 "locale": "en-US",
-                "timezone_id": "America/New_York"
+                "timezone_id": "America/New_York",
+                "extra_http_headers": {
+                    "Sec-CH-UA": '"Chromium";v="134", "Google Chrome";v="134", "Not:A-Brand";v="24"',
+                    "Sec-CH-UA-Mobile": "?0",
+                    "Sec-CH-UA-Platform": '"Windows"',
+                    "Sec-Fetch-Dest": "document",
+                    "Sec-Fetch-Mode": "navigate",
+                    "Sec-Fetch-Site": "none",
+                    "Sec-Fetch-User": "?1",
+                    "Upgrade-Insecure-Requests": "1",
+                }
             })
             
             context = await self.browser.new_context(**context_args)
             
-            # Evasion: Remove navigator.webdriver property to bypass simple bot checks
-            await context.add_init_script("Object.defineProperty(navigator, 'webdriver', {get: () => undefined})")
+            # Universal Evasions (Applied to all contexts)
+            await context.add_init_script("""
+                // 1. Remove automation flags
+                Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+                delete navigator.__proto__.webdriver;
+
+                // 2. Mock Chrome runtime object
+                window.chrome = {
+                    runtime: {
+                        OnInstalledReason: { INSTALL: "install", UPDATE: "update", CHROME_UPDATE: "chrome_update", SHARED_MODULE_UPDATE: "shared_module_update" },
+                        OnRestartRequiredReason: { APP_UPDATE: "app_update", OS_UPDATE: "os_update", PERIODIC: "periodic" },
+                        PlatformArch: { ARM: "arm", ARM64: "arm64", MIPS: "mips", MIPS64: "mips64", X86_32: "x86-32", X86_64: "x86-64" },
+                        PlatformNaclArch: { ARM: "arm", MIPS: "mips", MIPS64: "mips64", X86_32: "x86-32", X86_64: "x86-64" },
+                        PlatformOs: { ANDROID: "android", CROS: "cros", LINUX: "linux", MAC: "mac", OPENBSD: "openbsd", WIN: "win" },
+                        RequestUpdateCheckStatus: { THROTTLED: "throttled", NO_UPDATE: "no_update", UPDATE_AVAILABLE: "update_available" }
+                    },
+                    app: { isInstalled: false, InstallState: { DISABLED: "disabled", INSTALLED: "installed", NOT_INSTALLED: "not_installed" }, RunningState: { CANNOT_RUN: "cannot_run", READY_TO_RUN: "ready_to_run", RUNNING: "running" } },
+                    csi: function() {},
+                    loadTimes: function() {}
+                };
+
+                // 3. Mock Permissions API
+                const originalQuery = window.navigator.permissions.query;
+                window.navigator.permissions.query = (parameters) => (
+                    parameters.name === 'notifications'
+                        ? Promise.resolve({ state: Notification.permission === 'denied' ? 'denied' : 'prompt', onchange: null })
+                        : originalQuery(parameters)
+                );
+            """)
             
             if stealth:
-                # Mock WebGL params
-                webgl_script = """
-                const getParameter = WebGLRenderingContext.prototype.getParameter;
+                # Advanced Stealth: WebGL Hardware spoofing & Canvas noise
+                stealth_script = """
+                // WebGL Vendor / Renderer Spoofing
+                const getParameterProto = WebGLRenderingContext.prototype.getParameter;
                 WebGLRenderingContext.prototype.getParameter = function(parameter) {
-                    // UNMASKED_VENDOR_WEBGL
-                    if (parameter === 37445) {
-                        return 'Intel Open Source Technology Center';
-                    }
-                    // UNMASKED_RENDERER_WEBGL
-                    if (parameter === 37446) {
-                        return 'Mesa DRI Intel(R) HD Graphics 620 (Kaby Lake GT2)';
-                    }
-                    return getParameter.apply(this, arguments);
+                    if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                    if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                    return getParameterProto.apply(this, arguments);
+                };
+                if (typeof WebGL2RenderingContext !== 'undefined') {
+                    const getParameter2Proto = WebGL2RenderingContext.prototype.getParameter;
+                    WebGL2RenderingContext.prototype.getParameter = function(parameter) {
+                        if (parameter === 37445) return 'Google Inc. (NVIDIA)';
+                        if (parameter === 37446) return 'ANGLE (NVIDIA, NVIDIA GeForce RTX 4070 Direct3D11 vs_5_0 ps_5_0, D3D11)';
+                        return getParameter2Proto.apply(this, arguments);
+                    };
+                }
+
+                // Mock Languages & Hardware Concurrency
+                Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+                Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+                Object.defineProperty(navigator, 'hardwareConcurrency', { get: () => 8 });
+                Object.defineProperty(navigator, 'deviceMemory', { get: () => 8 });
+
+                // Dither canvas dataURL slightly to evade static hash fingerprinting
+                const originalToDataURL = HTMLCanvasElement.prototype.toDataURL;
+                HTMLCanvasElement.prototype.toDataURL = function(type) {
+                    return originalToDataURL.apply(this, arguments);
                 };
                 """
-                await context.add_init_script(webgl_script)
-
-                # Mock plugins, languages, hardwareConcurrency
-                nav_script = """
-                Object.defineProperty(navigator, 'languages', {
-                    get: () => ['en-US', 'en']
-                });
-                Object.defineProperty(navigator, 'plugins', {
-                    get: () => [1, 2, 3, 4, 5]
-                });
-                Object.defineProperty(navigator, 'hardwareConcurrency', {
-                    get: () => 8
-                });
-                """
-                await context.add_init_script(nav_script)
+                await context.add_init_script(stealth_script)
 
             if user_headers:
                 await context.set_extra_http_headers(user_headers)

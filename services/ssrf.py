@@ -12,28 +12,39 @@ RESTRICTED_NETWORKS = [
     ipaddress.ip_network("172.16.0.0/12"),
     ipaddress.ip_network("192.168.0.0/16"),
     ipaddress.ip_network("127.0.0.0/8"),
-    ipaddress.ip_network("169.254.0.0/16"),       # AWS/Azure IMDS & Link-Local
+    ipaddress.ip_network("169.254.0.0/16"),       # AWS/Azure/GCP IMDS & Link-Local
     ipaddress.ip_network("100.64.0.0/10"),        # CGNAT & Cloud Internal
     ipaddress.ip_network("100.100.100.200/32"),   # Alibaba IMDS
     ipaddress.ip_network("10.96.0.0/12"),         # Kubernetes Service CIDR
-    ipaddress.ip_network("0.0.0.0/8"),
-    ipaddress.ip_network("::1/128"),
+    ipaddress.ip_network("0.0.0.0/8"),            # Current network
+    ipaddress.ip_network("192.0.0.0/24"),         # IETF Protocol Assignments
+    ipaddress.ip_network("192.0.2.0/24"),         # TEST-NET-1
+    ipaddress.ip_network("198.51.100.0/24"),      # TEST-NET-2
+    ipaddress.ip_network("203.0.113.0/24"),       # TEST-NET-3
+    ipaddress.ip_network("224.0.0.0/4"),          # Multicast
+    ipaddress.ip_network("240.0.0.0/4"),          # Reserved Class E
+    ipaddress.ip_network("::1/128"),              # IPv6 Loopback
+    ipaddress.ip_network("::/128"),               # IPv6 Unspecified
+    ipaddress.ip_network("::ffff:0:0/96"),        # IPv4-mapped IPv6
     ipaddress.ip_network("fc00::/7"),             # IPv6 Unique Local
-    ipaddress.ip_network("fe80::/10")             # IPv6 Link-Local
+    ipaddress.ip_network("fe80::/10"),            # IPv6 Link-Local
 ]
 
 RESTRICTED_HOSTNAME_SUFFIXES = (
-    ".internal", ".local", ".localhost", ".cluster.local", ".localdomain"
+    ".internal", ".local", ".localhost", ".cluster.local", ".localdomain", ".lan", ".home.arpa"
 )
 
 RESTRICTED_HOSTNAMES = {
-    "localhost", "metadata.google.internal", "metadata.gcp.internal"
+    "localhost", "metadata.google.internal", "metadata.gcp.internal", "instance-data"
 }
 
 
 def _is_ip_restricted(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         return True
+    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
+        if _is_ip_restricted(ip.ipv4_mapped):
+            return True
     return any(ip in net for net in RESTRICTED_NETWORKS)
 
 

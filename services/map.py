@@ -1,3 +1,4 @@
+import gzip
 import re
 from collections import deque
 from urllib.parse import urldefrag, urljoin, urlparse
@@ -8,8 +9,16 @@ from curl_cffi.requests import AsyncSession
 from .log_filter import logger
 from .ssrf import is_ssrf_safe
 
-SITEMAP_CANDIDATES = ("/sitemap.xml", "/sitemap_index.xml", "/sitemap-index.xml", "/sitemap/sitemap.xml")
+SITEMAP_CANDIDATES = (
+    "/sitemap.xml",
+    "/sitemap_index.xml",
+    "/sitemap-index.xml",
+    "/sitemap/sitemap.xml",
+    "/sitemap1.xml",
+    "/sitemap.xml.gz",
+)
 _LINK_RE = re.compile(r"<loc>\s*([^<\s]+)\s*</loc>", re.IGNORECASE)
+_SITEMAP_DIRECTIVE_RE = re.compile(r"(?i)^sitemap:\s*([^\r\n\s]+)", re.MULTILINE)
 _WWW_RE = re.compile(r"^www\.", re.IGNORECASE)
 
 
@@ -40,6 +49,11 @@ async def _fetch_text(url: str, timeout: float, proxy_url: str | None) -> str | 
             resp = await session.get(url)
             if resp.status_code != 200:
                 return None
+            if resp.headers.get("content-encoding") == "gzip" or url.lower().endswith(".gz"):
+                try:
+                    return gzip.decompress(resp.content).decode("utf-8", errors="ignore")
+                except Exception:
+                    pass
             return resp.text
     except Exception as e:
         logger.debug(f"map fetch failed for {url}: {e}")
@@ -69,14 +83,16 @@ async def _parse_sitemap(
         if not loc.lower().startswith(("http://", "https://")):
             continue
         if _looks_like_sitemap(loc):
-            urls |= await _parse_sitemap(loc, timeout, proxy_url, limit, visited_sitemaps)
+            nested = await _parse_sitemap(loc, timeout, proxy_url, limit - len(urls), visited_sitemaps)
+            urls |= nested
         else:
             urls.add(urldefrag(loc)[0])
     return urls
 
 
 def _looks_like_sitemap(url: str) -> bool:
-    return url.lower().endswith(".xml") or "/sitemap" in url.lower()
+    lower = url.lower()
+    return lower.endswith(".xml") or lower.endswith(".xml.gz") or "sitemap" in lower
 
 
 async def _discover_links(
@@ -135,7 +151,7 @@ async def map_site(
     timeout: float = 15.0,
     proxy_url: str | None = None,
 ) -> dict:
-    """Discover the URLs of a site via sitemap.xml first, then link-based BFS."""
+    """Discover the URLs of a site via robots.txt, sitemaps (including .xml.gz), and BFS DOM exploration."""
     parsed = urlparse(url)
     base_domain = parsed.netloc or ""
     urls: set[str] = set()
@@ -146,19 +162,29 @@ async def map_site(
 
     if include_sitemap:
         scheme = parsed.scheme or "https"
-        for candidate in SITEMAP_CANDIDATES:
+        visited_sm: set[str] = set()
+
+        # 1. Discover sitemaps declared in robots.txt
+        robots_txt = await _fetch_text(f"{scheme}://{base_domain}/robots.txt", timeout, proxy_url)
+        candidates_to_try = list(SITEMAP_CANDIDATES)
+        if robots_txt:
+            for declared in _SITEMAP_DIRECTIVE_RE.findall(robots_txt):
+                declared_clean = declared.strip()
+                if declared_clean.startswith(("http://", "https://")):
+                    candidates_to_try.insert(0, declared_clean)
+
+        for candidate in candidates_to_try:
             if len(urls) >= limit:
                 break
-            sm_url = f"{scheme}://{base_domain}{candidate}"
+            sm_url = candidate if candidate.startswith(("http://", "https://")) else f"{scheme}://{base_domain}{candidate}"
             if not await is_ssrf_safe(sm_url):
                 continue
-            sitemap_urls = await _parse_sitemap(
-                sm_url, timeout, proxy_url, limit, set()
-            )
+            sitemap_urls = await _parse_sitemap(sm_url, timeout, proxy_url, limit, visited_sm)
             if sitemap_urls:
                 urls |= sitemap_urls
                 discovered_via = "sitemap"
-                break
+                if len(urls) >= limit:
+                    break
 
     if len(urls) < limit:
         links = await _discover_links(

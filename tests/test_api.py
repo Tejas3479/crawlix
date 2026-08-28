@@ -119,6 +119,23 @@ async def test_batch_crawl_creation(async_client):
 
 
 @pytest.mark.asyncio
+async def test_batch_crawl_json_creation(async_client):
+    headers = {"x-api-key": "test-key"}
+    payload = {
+        "urls": ["https://example.com", "https://example.org/docs"],
+        "concurrency": 3,
+        "options": {"render_js": False, "output_format": "markdown"}
+    }
+    
+    r = await async_client.post("/api/batch", headers=headers, json=payload)
+    assert r.status_code == 200
+    data = r.json()
+    assert "batch_id" in data
+    assert data["total_urls"] == 2
+    assert data["status"] == "processing"
+
+
+@pytest.mark.asyncio
 async def test_crawl_lifecycle(async_client):
     headers = {"x-api-key": "test-key"}
     # 1. Start crawl

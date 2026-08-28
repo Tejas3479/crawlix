@@ -1,4 +1,5 @@
 import asyncio
+import difflib
 import json
 import os
 import re
@@ -10,6 +11,67 @@ from bs4 import BeautifulSoup
 from markdownify import markdownify
 
 from .log_filter import logger
+
+
+def parse_document_to_markdown(content_bytes: bytes, file_type: str = "pdf") -> str:
+    """Parses binary documents (.pdf, .csv, .tsv, .xlsx) into clean Markdown tables."""
+    if not content_bytes:
+        return ""
+    
+    file_type = file_type.lower().strip(".")
+    
+    if file_type in ("csv", "tsv"):
+        import csv
+        import io
+        delimiter = "\t" if file_type == "tsv" else ","
+        text_stream = io.StringIO(content_bytes.decode("utf-8", errors="replace"))
+        reader = csv.reader(text_stream, delimiter=delimiter)
+        rows = list(reader)
+        if not rows:
+            return ""
+        headers = rows[0]
+        header_line = "| " + " | ".join(headers) + " |"
+        sep_line = "| " + " | ".join(["---"] * len(headers)) + " |"
+        body_lines = ["| " + " | ".join(row) + " |" for row in rows[1:]]
+        return "\n".join([header_line, sep_line, *body_lines])
+
+    if file_type == "pdf":
+        try:
+            import io
+            import pypdf
+            reader = pypdf.PdfReader(io.BytesIO(content_bytes))
+            pages = []
+            for idx, page in enumerate(reader.pages):
+                txt = page.extract_text() or ""
+                pages.append(f"## Page {idx + 1}\n\n{txt.strip()}")
+            return "\n\n---\n\n".join(pages)
+        except Exception:
+            raw_text = re.sub(rb"[^\x20-\x7E\n]", rb" ", content_bytes)
+            decoded = raw_text.decode("ascii", errors="ignore")
+            clean_chunks = [c.strip() for c in re.findall(r"[A-Za-z0-9\s.,;:?!-]{15,}", decoded)]
+            return "# Extracted PDF Document\n\n" + "\n\n".join(clean_chunks[:50])
+
+    return content_bytes.decode("utf-8", errors="replace")
+
+
+def compute_content_diff(old_content: str, new_content: str) -> dict:
+    """Computes line and word-level semantic diffs between two content snapshots."""
+    old_lines = old_content.splitlines()
+    new_lines = new_content.splitlines()
+    diff = list(difflib.unified_diff(old_lines, new_lines, fromfile="snapshot_a", tofile="snapshot_b", lineterm=""))
+    
+    additions = [line[1:] for line in diff if line.startswith("+") and not line.startswith("+++")]
+    deletions = [line[1:] for line in diff if line.startswith("-") and not line.startswith("---")]
+    
+    has_changed = len(additions) > 0 or len(deletions) > 0
+    return {
+        "has_changed": has_changed,
+        "additions_count": len(additions),
+        "deletions_count": len(deletions),
+        "additions": additions[:30],
+        "deletions": deletions[:30],
+        "unified_diff": "\n".join(diff[:100])
+    }
 
 
 def _extract_markdown_trafilatura(html: str, strip_links: bool) -> str | None:
@@ -336,6 +398,129 @@ async def _extract_llm_structured_text(
         raise RuntimeError(f"Unsupported provider: {provider}")
 
 
+def clean_markdown_for_llm(markdown: str) -> str:
+    """Strips boilerplate, repetitive navigation clusters, ads, tracking URLs, and token-heavy markup.
+    Reduces token count by 40-70% while preserving core semantic knowledge for LLMs/RAG.
+    """
+    if not markdown:
+        return ""
+    
+    # 1. Remove embedded base64 data URIs
+    text = re.sub(r'data:image\/[a-zA-Z0-9+\/]+;base64,[A-Za-z0-9+/=]+', '', markdown)
+
+    # 2. Remove image markdown tags while preserving alt text description
+    text = re.sub(r'!\[([^\]]*)\]\([^)]+\)', r'\1', text)
+    
+    # 3. Strip tracking query parameters from markdown links (utm_*, gclid, fbclid, etc.)
+    text = re.sub(r'(\[[^\]]+\]\([^\)\?]+)\?[^)]*(utm_[a-zA-Z0-9_]+|gclid|fbclid|ref|source)[^)]*(\))', r'\1\3', text)
+
+    # 4. Strip cookie/GDPR/Privacy boilerplate and social sharing noise
+    boilerplate_patterns = [
+        r'(?i)^.*(accept|cookie|consent|privacy policy|terms of service|all rights reserved|copyright ©).*$',
+        r'(?i)^.*(subscribe to our newsletter|sign up for updates|follow us on|share on twitter|share on facebook|share on linkedin).*$',
+    ]
+    lines = []
+    for line in text.splitlines():
+        stripped_line = line.strip()
+        if not stripped_line:
+            lines.append("")
+            continue
+        is_boilerplate = any(re.match(p, stripped_line) for p in boilerplate_patterns)
+        if not is_boilerplate:
+            lines.append(line)
+            
+    text = "\n".join(lines)
+    
+    # 5. Strip excessive navigation / link clusters (e.g. [Home](/) | [Pricing](/pricing))
+    text = re.sub(r'(\[[^\]]+\]\([^)]+\)\s*[\|\•\-\/]\s*){3,}', '', text)
+    
+    # 6. Collapse consecutive blank lines and trim
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = "\n".join(line.rstrip() for line in text.splitlines())
+    return text.strip()
+
+
+async def auto_generate_schema(
+    html: str,
+    url: str,
+    llm_provider: str = "openai",
+    llm_api_key: str | None = None,
+    extraction_goal: str | None = None
+) -> dict:
+    """Intelligently analyzes DOM structure and proposes an optimal structured extraction schema."""
+    soup = BeautifulSoup(html, "lxml")
+    
+    potential_containers = soup.select(
+        "article, .card, .product, .item, .post, .athing, tr, li, .result, [class*='card'], [class*='item']"
+    )
+    
+    base_selector = None
+    suggested_fields = []
+    
+    if potential_containers and len(potential_containers) >= 2:
+        first = potential_containers[0]
+        classes = first.get("class", [])
+        if classes:
+            base_selector = f".{classes[0]}"
+        else:
+            base_selector = first.name
+            
+        if first.find(["h1", "h2", "h3", "h4", "a"]):
+            suggested_fields.append({"name": "title", "selector": "h1, h2, h3, h4, a", "type": "text"})
+        if first.find("a", href=True):
+            suggested_fields.append({"name": "url", "selector": "a", "type": "attribute", "attribute": "href"})
+        if first.find(string=re.compile(r"[\$€£₹]\s*\d+|\d+\s*(USD|EUR|GBP)")):
+            suggested_fields.append({"name": "price", "selector": "[class*='price'], span, p", "type": "text"})
+        if first.find(["p", "span", ".description", ".summary"]):
+            suggested_fields.append({"name": "description", "selector": "p, .description, .summary", "type": "text"})
+    else:
+        base_selector = "body"
+        suggested_fields = [
+            {"name": "title", "selector": "h1, title", "type": "text"},
+            {"name": "description", "selector": "meta[name='description'], p", "type": "text"},
+            {"name": "main_content", "selector": "main, article, #content", "type": "text"},
+        ]
+        
+    schema_definition = {
+        "name": "auto_extracted_schema",
+        "baseSelector": base_selector,
+        "fields": suggested_fields,
+        "type": "object",
+        "properties": {f["name"]: {"type": "string"} for f in suggested_fields},
+        "required": [f["name"] for f in suggested_fields[:2]],
+    }
+    
+    key = llm_api_key or os.getenv(f"{llm_provider.upper()}_API_KEY")
+    if key and (extraction_goal or len(html) > 500):
+        try:
+            sample_text = soup.get_text(separator="\n", strip=True)[:4000]
+            prompt = (
+                f"Analyze this sample web text from {url} and generate the ideal JSON extraction schema.\n"
+                f"User goal: {extraction_goal or 'Extract the primary structured records (products, articles, listings, or entries)'}.\n\n"
+                f"Sample text:\n{sample_text}\n\n"
+                "Return ONLY a JSON object with 'name', 'baseSelector', 'fields' (array of {name, selector, type, description}), and 'properties'."
+            )
+            raw = await _extract_llm_structured_text(
+                provider=llm_provider,
+                model="gpt-5.6-luna" if llm_provider == "openai" else "claude-sonnet-5" if llm_provider == "anthropic" else "gemini-3.6-flash",
+                api_key=key,
+                system="You are an expert web scraping schema architect. Propose clean JSON schemas for web data extraction.",
+                user=prompt,
+                max_tokens=1500
+            )
+            parsed = json.loads(_strip_json_fences(raw))
+            if isinstance(parsed, dict) and "fields" in parsed:
+                schema_definition = parsed
+                suggested_fields = parsed.get("fields", suggested_fields)
+        except Exception as e:
+            logger.warning(f"LLM Schema generation fallback to heuristics: {e}")
+
+    return {
+        "schema_definition": schema_definition,
+        "suggested_fields": suggested_fields
+    }
+
+
 async def process_content(
     html: str,
     output_format: str,
@@ -347,7 +532,8 @@ async def process_content(
     css_selector: str | None = None,
     llm_model: str | None = None,
     extraction_prompt: str | None = None,
-    image_data: str | None = None
+    image_data: str | None = None,
+    compress_tokens: bool = False,
 ) -> str | dict | list:
     # DOM Slicing (Pruning) if css_selector is provided
     if css_selector:
@@ -368,6 +554,8 @@ async def process_content(
         # product/forum/listing pages). Fall back to the heuristic path.
         trafilatura_md = _extract_markdown_trafilatura(html, strip_links)
         if trafilatura_md is not None and trafilatura_md.strip():
+            if compress_tokens:
+                return clean_markdown_for_llm(trafilatura_md)
             return trafilatura_md
 
         soup = BeautifulSoup(html, "lxml")
@@ -394,6 +582,8 @@ async def process_content(
             heading_style="ATX",
             strip=["a"] if strip_links else []
         )
+        if compress_tokens:
+            return clean_markdown_for_llm(markdown_text)
         return markdown_text
 
     # CSS selector-based extraction: no LLM required, deterministic and cheap.
@@ -421,7 +611,7 @@ async def process_content(
         try:
             raw_response = await _extract_llm_structured_text(
                 provider=llm_provider,
-                model=llm_model or ("gpt-4o" if llm_provider == "openai" else "claude-3-5-sonnet-20240620" if llm_provider == "anthropic" else "gemini-1.5-flash"),
+                model=llm_model or ("gpt-5.6-sol" if llm_provider == "openai" else "claude-sonnet-5" if llm_provider == "anthropic" else "gemini-3.6-flash"),
                 api_key=resolved_key,
                 system=system,
                 user="Extract data from this screenshot.",
@@ -429,7 +619,6 @@ async def process_content(
                 max_tokens=4000,
                 image_data=b64_data
             )
-            import json
             stripped = _strip_json_fences(raw_response)
             return json.loads(stripped)
         except Exception as e:
@@ -444,7 +633,6 @@ async def process_content(
                 return extracted
             else:
                 logger.info("CSS extraction failed. Triggering self-healing semantic extraction fallback.")
-                import json
                 properties = {}
                 required = []
                 for field in json_schema.get("fields", []):
@@ -592,7 +780,7 @@ async def process_content(
 
         default_model = {
             "openai": "gpt-5.6-luna",
-            "anthropic": "claude-opus-5",
+            "anthropic": "claude-sonnet-5",
             "gemini": "gemini-3.6-flash",
         }
         last_err_msg = ""

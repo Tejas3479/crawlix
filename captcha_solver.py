@@ -195,7 +195,7 @@ class CaptchaDetector:
         url = page.url
 
         # Check reCAPTCHA
-        recaptcha_elem = await page.query_selector("iframe[src*='recaptcha'], [data-sitekey]")
+        recaptcha_elem = await page.query_selector("iframe[src*='recaptcha'], [data-sitekey], #g-recaptcha")
         if recaptcha_elem:
             sitekey = await recaptcha_elem.get_attribute("data-sitekey")
             if not sitekey:
@@ -203,17 +203,30 @@ class CaptchaDetector:
                 if "k=" in src:
                     sitekey = src.split("k=")[1].split("&")[0]
             if sitekey:
-                logger.info("reCAPTCHA challenge detected.")
+                logger.info(f"reCAPTCHA challenge detected (sitekey: {sitekey}). Solving...")
                 token = await solver.solve_recaptcha(page, sitekey, url)
                 if token:
-                    await page.evaluate(
-                        '(token) => document.getElementById("g-recaptcha-response").innerHTML = token',
-                        token
-                    )
+                    await page.evaluate("""(token) => {
+                        const inputs = document.querySelectorAll('[name="g-recaptcha-response"], #g-recaptcha-response, textarea.g-recaptcha-response');
+                        inputs.forEach(el => {
+                            el.value = token;
+                            el.innerHTML = token;
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                        if (window.___grecaptcha_cfg && window.___grecaptcha_cfg.clients) {
+                            try {
+                                Object.values(window.___grecaptcha_cfg.clients).forEach(client => {
+                                    if (client && client.callback) client.callback(token);
+                                });
+                            } catch(e) {}
+                        }
+                    }""", token)
+                    await asyncio.sleep(1)
                     return True
 
         # Check hCaptcha
-        hcaptcha_elem = await page.query_selector("iframe[src*='hcaptcha'], [data-hcaptcha-sitekey]")
+        hcaptcha_elem = await page.query_selector("iframe[src*='hcaptcha'], [data-hcaptcha-sitekey], .h-captcha")
         if hcaptcha_elem:
             sitekey = await hcaptcha_elem.get_attribute("data-hcaptcha-sitekey") or await hcaptcha_elem.get_attribute("data-sitekey")
             if not sitekey:
@@ -221,27 +234,48 @@ class CaptchaDetector:
                 if "sitekey=" in src:
                     sitekey = src.split("sitekey=")[1].split("&")[0]
             if sitekey:
-                logger.info("hCaptcha challenge detected.")
+                logger.info(f"hCaptcha challenge detected (sitekey: {sitekey}). Solving...")
                 token = await solver.solve_hcaptcha(page, sitekey, url)
                 if token:
-                    await page.evaluate(
-                        '(token) => document.getElementsByName("h-captcha-response")[0].value = token',
-                        token
-                    )
+                    await page.evaluate("""(token) => {
+                        const inputs = document.querySelectorAll('[name="h-captcha-response"], [name="g-recaptcha-response"], textarea[name="h-captcha-response"]');
+                        inputs.forEach(el => {
+                            el.value = token;
+                            el.innerHTML = token;
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                        if (window.hcaptcha && typeof window.hcaptcha.callback === 'function') {
+                            try { window.hcaptcha.callback(token); } catch(e) {}
+                        }
+                    }""", token)
+                    await asyncio.sleep(1)
                     return True
 
         # Check Cloudflare Turnstile
-        turnstile_elem = await page.query_selector("iframe[src*='challenges.cloudflare.com'], .cf-turnstile")
+        turnstile_elem = await page.query_selector("iframe[src*='challenges.cloudflare.com'], .cf-turnstile, [data-turnstile-sitekey]")
         if turnstile_elem:
-            sitekey = await turnstile_elem.get_attribute("data-sitekey")
+            sitekey = await turnstile_elem.get_attribute("data-sitekey") or await turnstile_elem.get_attribute("data-turnstile-sitekey")
+            if not sitekey:
+                src = await turnstile_elem.get_attribute("src") or ""
+                if "sitekey=" in src:
+                    sitekey = src.split("sitekey=")[1].split("&")[0]
             if sitekey:
-                logger.info("Cloudflare Turnstile challenge detected.")
+                logger.info(f"Cloudflare Turnstile challenge detected (sitekey: {sitekey}). Solving...")
                 token = await solver.solve_turnstile(page, sitekey, url)
                 if token:
-                    await page.evaluate(
-                        '(token) => document.getElementsByName("cf-turnstile-response")[0].value = token',
-                        token
-                    )
+                    await page.evaluate("""(token) => {
+                        const inputs = document.querySelectorAll('[name="cf-turnstile-response"], input[name="cf-turnstile-response"]');
+                        inputs.forEach(el => {
+                            el.value = token;
+                            el.dispatchEvent(new Event('input', { bubbles: true }));
+                            el.dispatchEvent(new Event('change', { bubbles: true }));
+                        });
+                        if (window.turnstile && typeof window.turnstile.callback === 'function') {
+                            try { window.turnstile.callback(token); } catch(e) {}
+                        }
+                    }""", token)
+                    await asyncio.sleep(1)
                     return True
 
         return False
