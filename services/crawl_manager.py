@@ -200,8 +200,9 @@ class CrawlManager:
 
         # Publish state to Redis for WebSockets
         try:
-            from services.session_manager import redis_client
             import json
+
+            from services.session_manager import redis_client
             await redis_client.publish("crawl_updates", json.dumps({
                 "crawl_id": crawl_id,
                 "status": status or job.status,

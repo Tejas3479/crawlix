@@ -11,7 +11,7 @@ from fastapi import (
     Request,
     UploadFile,
     WebSocket,
-    WebSocketDisconnect
+    WebSocketDisconnect,
 )
 from fastapi.responses import FileResponse
 
@@ -69,6 +69,47 @@ async def delete_crawl(crawl_id: str):
     if not await crawl_manager.delete_crawl(crawl_id):
         raise HTTPException(status_code=404, detail="Crawl not found")
     return {"deleted": True, "crawl_id": crawl_id}
+
+
+@router.get("/api/crawl/{crawl_id}/export", dependencies=[Depends(verify_api_key)])
+async def export_crawl_results(crawl_id: str, format: str = "jsonl"):
+    import json
+
+    from fastapi.responses import Response
+    
+    crawl = await crawl_manager.get_crawl(crawl_id)
+    if not crawl:
+        raise HTTPException(status_code=404, detail="Crawl not found")
+    
+    results = crawl.get("results") or []
+    
+    if format.lower() in ("jsonl", "ndjson"):
+        lines = [json.dumps(r, ensure_ascii=False) for r in results]
+        content = "\n".join(lines)
+        return Response(
+            content=content,
+            media_type="application/x-ndjson",
+            headers={"Content-Disposition": f"attachment; filename=crawl_{crawl_id}.jsonl"}
+        )
+    elif format.lower() == "csv":
+        import io
+        output = io.StringIO()
+        writer = csv.writer(output)
+        writer.writerow(["url", "status_code", "title", "content"])
+        for r in results:
+            writer.writerow([r.get("url", ""), r.get("status_code", ""), r.get("title", ""), str(r.get("content", ""))[:5000]])
+        return Response(
+            content=output.getvalue(),
+            media_type="text/csv",
+            headers={"Content-Disposition": f"attachment; filename=crawl_{crawl_id}.csv"}
+        )
+    else:
+        return Response(
+            content=json.dumps(results, indent=2, ensure_ascii=False),
+            media_type="application/json",
+            headers={"Content-Disposition": f"attachment; filename=crawl_{crawl_id}.json"}
+        )
+
 
 
 # BATCH CRAWL ENDPOINTS

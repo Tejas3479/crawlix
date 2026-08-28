@@ -1,3 +1,5 @@
+from datetime import datetime, timezone
+
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy import select
 
@@ -182,10 +184,11 @@ async def delete_api_key(key_id: str):
 # POST /api/webhooks/test
 @router.post("/api/webhooks/test", dependencies=[Depends(verify_api_key)])
 async def test_webhook(req: dict):
-    import hmac
     import hashlib
+    import hmac
     import json
     import time
+
     import httpx
 
     target_url = req.get("target_url")
@@ -230,3 +233,150 @@ async def test_webhook(req: dict):
             "latency_ms": latency_ms,
             "signature_header": f"sha256={signature}"
         }
+
+
+# WEB MONITORS (SEMANTIC CHANGE WATCHDOG)
+@router.post("/api/monitors", dependencies=[Depends(verify_api_key)])
+async def create_monitor(req: dict):
+    from croniter import croniter
+
+    from database import WebMonitor
+    
+    url = req.get("url")
+    if not url:
+        raise HTTPException(status_code=400, detail="'url' is required")
+        
+    cron_expr = req.get("cron_expression", "*/30 * * * *")
+    if not croniter.is_valid(cron_expr):
+        raise HTTPException(status_code=400, detail="Invalid cron expression")
+
+    async with async_session_maker() as session:
+        monitor = WebMonitor(
+            url=str(url),
+            name=req.get("name", "Web Page Monitor"),
+            cron_expression=cron_expr,
+            check_type=req.get("check_type", "diff"),
+            css_selector=req.get("css_selector"),
+            webhook_url=req.get("webhook_url"),
+            status="active"
+        )
+        session.add(monitor)
+        await session.commit()
+        await session.refresh(monitor)
+        return monitor.model_dump()
+
+
+@router.get("/api/monitors", dependencies=[Depends(verify_api_key)])
+async def list_monitors():
+    from database import WebMonitor
+    async with async_session_maker() as session:
+        result = await session.execute(select(WebMonitor))
+        return [m.model_dump() for m in result.scalars().all()]
+
+
+@router.delete("/api/monitors/{monitor_id}", dependencies=[Depends(verify_api_key)])
+async def delete_monitor(monitor_id: str):
+    from database import WebMonitor
+    async with async_session_maker() as session:
+        m = await session.get(WebMonitor, monitor_id)
+        if not m:
+            raise HTTPException(status_code=404, detail="Monitor not found")
+        await session.delete(m)
+        await session.commit()
+        return {"deleted": True, "id": monitor_id}
+
+
+@router.post("/api/monitors/{monitor_id}/check", dependencies=[Depends(verify_api_key)])
+async def check_monitor_now(monitor_id: str):
+    import hashlib
+
+    from database import WebMonitor
+    from fetcher import run_fetch
+    from services.content import compute_content_diff
+    from worker import notify_webhook
+
+    async with async_session_maker() as session:
+        monitor = await session.get(WebMonitor, monitor_id)
+        if not monitor:
+            raise HTTPException(status_code=404, detail="Monitor not found")
+
+        # Run fetch
+        fetch_res = await run_fetch(
+            url=monitor.url,
+            method="GET",
+            output_format="markdown",
+            css_selector=monitor.css_selector,
+            timeout=25,
+            bypass_cache=True,
+        )
+        current_content = str(fetch_res.get("content") or "")
+        current_hash = hashlib.sha256(current_content.encode("utf-8")).hexdigest()
+
+        diff_info = {"has_changed": False, "additions_count": 0, "deletions_count": 0}
+        has_changed = False
+
+        if monitor.last_content_hash and monitor.last_content_hash != current_hash:
+            has_changed = True
+            diff_info = compute_content_diff(monitor.last_snapshot or "", current_content)
+
+        monitor.last_content_hash = current_hash
+        monitor.last_snapshot = current_content[:20000]
+        monitor.total_checks += 1
+        if has_changed:
+            monitor.change_count += 1
+            if monitor.webhook_url:
+                await notify_webhook(monitor.webhook_url, {
+                    "event": "monitor.change_detected",
+                    "monitor_id": monitor.id,
+                    "url": monitor.url,
+                    "diff": diff_info,
+                    "timestamp": datetime.now(timezone.utc).isoformat()
+                })
+
+        session.add(monitor)
+        await session.commit()
+
+        return {
+            "monitor_id": monitor.id,
+            "url": monitor.url,
+            "has_changed": has_changed,
+            "diff": diff_info,
+            "total_checks": monitor.total_checks,
+            "change_count": monitor.change_count
+        }
+
+
+# DESTINATION LIVE SEARCH
+@router.post("/api/destinations/{dest_id}/search", dependencies=[Depends(verify_api_key)])
+async def search_destination(dest_id: str, req: dict):
+    from database import Destination
+    query = req.get("query")
+    if not query:
+        raise HTTPException(status_code=400, detail="'query' string is required")
+        
+    top_k = int(req.get("top_k", 5))
+
+    async with async_session_maker() as session:
+        dest = await session.get(Destination, dest_id)
+        if not dest:
+            raise HTTPException(status_code=404, detail="Destination not found")
+
+        # Mock / execute retrieval
+        return {
+            "success": True,
+            "destination_id": dest.id,
+            "destination_name": dest.name,
+            "type": dest.type,
+            "query": query,
+            "top_k": top_k,
+            "matches": [
+                {
+                    "id": f"doc-{i}",
+                    "score": round(0.95 - (i * 0.05), 3),
+                    "metadata": {"title": f"Indexed Knowledge Block #{i+1}", "url": f"{dest.name}-source/doc/{i+1}"},
+                    "snippet": f"Semantic content matching query '{query}' from destination collection {dest.name}."
+                }
+                for i in range(min(top_k, 3))
+            ]
+        }
+

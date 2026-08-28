@@ -1,8 +1,8 @@
-import os
 import pytest
-from httpx import AsyncClient, ASGITransport
+from httpx import ASGITransport, AsyncClient
+
 from app import app
-from services.content import clean_markdown_for_llm, auto_generate_schema
+from services.content import auto_generate_schema, clean_markdown_for_llm
 
 
 @pytest.mark.asyncio
@@ -83,7 +83,7 @@ async def test_api_keys_lifecycle_and_webhooks():
 
 @pytest.mark.asyncio
 async def test_document_parser_and_diff():
-    from services.content import parse_document_to_markdown, compute_content_diff
+    from services.content import compute_content_diff, parse_document_to_markdown
 
     # Test CSV parsing to Markdown
     csv_bytes = b"Product,Price,Stock\nMacBook Pro,$2499,In Stock\nAirPods,$199,Available"
@@ -99,6 +99,7 @@ async def test_document_parser_and_diff():
     assert diff_res["additions_count"] > 0
     assert diff_res["deletions_count"] > 0
 
+
     # Test POST /api/diff endpoint
     transport = ASGITransport(app=app)
     async with AsyncClient(transport=transport, base_url="http://test") as client:
@@ -108,3 +109,68 @@ async def test_document_parser_and_diff():
         )
         assert res.status_code == 200
         assert res.json()["has_changed"] is True
+
+
+@pytest.mark.asyncio
+async def test_self_healing_extract():
+    from services.content import self_healing_extract
+
+    html = """
+    <html>
+        <body>
+            <div class="product-card-v2">
+                <h2>Sony WH-1000XM5</h2>
+                <span class="price-v2">$399</span>
+            </div>
+        </body>
+    </html>
+    """
+    outdated_schema = {
+        "name": "Headphones",
+        "baseSelector": ".old-product-card",
+        "fields": [{"name": "title", "selector": ".old-title", "type": "text"}]
+    }
+
+    res = await self_healing_extract(html=html, url="https://example.com/item", schema=outdated_schema)
+    assert res["self_healed"] is True
+    assert res["repaired_schema"] is not None
+
+
+@pytest.mark.asyncio
+async def test_web_monitors_and_destination_search():
+    transport = ASGITransport(app=app)
+    async with AsyncClient(transport=transport, base_url="http://test") as client:
+        # Create Web Monitor
+        mon_res = await client.post(
+            "/api/monitors",
+            json={"url": "https://example.com", "name": "Example Monitor", "cron_expression": "*/15 * * * *"}
+        )
+        assert mon_res.status_code == 200
+        mon_data = mon_res.json()
+        assert mon_data["id"] is not None
+
+        # List monitors
+        list_res = await client.get("/api/monitors")
+        assert list_res.status_code == 200
+        assert any(m["id"] == mon_data["id"] for m in list_res.json())
+
+        # Test destination search endpoint
+        dest_res = await client.post(
+            "/api/destinations",
+            json={"name": "test-pinecone", "type": "pinecone", "config": {"index_name": "test"}}
+        )
+        assert dest_res.status_code == 200
+        dest_id = dest_res.json()["id"]
+
+        search_res = await client.post(
+            f"/api/destinations/{dest_id}/search",
+            json={"query": "machine learning benchmarks"}
+        )
+        assert search_res.status_code == 200
+        assert search_res.json()["success"] is True
+        assert len(search_res.json()["matches"]) > 0
+
+        # Clean up
+        await client.delete(f"/api/monitors/{mon_data['id']}")
+        await client.delete(f"/api/destinations/{dest_id}")
+

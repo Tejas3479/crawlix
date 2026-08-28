@@ -92,7 +92,7 @@ async def _parse_sitemap(
 
 def _looks_like_sitemap(url: str) -> bool:
     lower = url.lower()
-    return lower.endswith(".xml") or lower.endswith(".xml.gz") or "sitemap" in lower
+    return lower.endswith((".xml", ".xml.gz")) or "sitemap" in lower
 
 
 async def _discover_links(

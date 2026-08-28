@@ -38,6 +38,7 @@ def parse_document_to_markdown(content_bytes: bytes, file_type: str = "pdf") -> 
     if file_type == "pdf":
         try:
             import io
+
             import pypdf
             reader = pypdf.PdfReader(io.BytesIO(content_bytes))
             pages = []
@@ -518,6 +519,64 @@ async def auto_generate_schema(
     return {
         "schema_definition": schema_definition,
         "suggested_fields": suggested_fields
+    }
+
+
+async def self_healing_extract(
+    html: str,
+    url: str,
+    schema: dict,
+    llm_provider: str = "openai",
+    llm_api_key: str | None = None,
+    extraction_goal: str | None = None,
+    min_confidence: float = 0.5
+) -> dict:
+    """Executes fast CSS extraction. If selectors fail or yield empty/null fields due to DOM drift,
+    automatically triggers AI schema auto-generation to synthesize repaired selectors,
+    re-runs extraction, and returns the result with self-healing telemetry.
+    """
+    initial_result = _extract_css(html, schema)
+    
+    has_data = False
+    if initial_result:
+        if isinstance(initial_result, dict):
+            non_null_fields = [v for v in initial_result.values() if v is not None and v != ""]
+            if len(non_null_fields) / max(1, len(schema.get("fields", []))) >= min_confidence:
+                has_data = True
+        elif isinstance(initial_result, list) and len(initial_result) > 0:
+            first_item = initial_result[0]
+            if isinstance(first_item, dict):
+                non_null_fields = [v for v in first_item.values() if v is not None and v != ""]
+                if len(non_null_fields) / max(1, len(schema.get("fields", []))) >= min_confidence:
+                    has_data = True
+
+    if has_data:
+        return {
+            "success": True,
+            "self_healed": False,
+            "data": initial_result,
+            "schema_used": schema
+        }
+
+    logger.info(f"DOM selector drift detected for {url}. Initiating self-healing repair...")
+    repaired = await auto_generate_schema(
+        html=html,
+        url=url,
+        llm_provider=llm_provider,
+        llm_api_key=llm_api_key,
+        extraction_goal=extraction_goal or schema.get("name") or "Extract structured records",
+    )
+    
+    repaired_schema = repaired.get("schema_definition") or schema
+    repaired_result = _extract_css(html, repaired_schema)
+    
+    return {
+        "success": repaired_result is not None,
+        "self_healed": True,
+        "original_schema": schema,
+        "repaired_schema": repaired_schema,
+        "data": repaired_result,
+        "message": "Schema auto-repaired after DOM drift was detected."
     }
 
 

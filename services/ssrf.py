@@ -42,9 +42,12 @@ RESTRICTED_HOSTNAMES = {
 def _is_ip_restricted(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_multicast or ip.is_reserved or ip.is_unspecified:
         return True
-    if isinstance(ip, ipaddress.IPv6Address) and ip.ipv4_mapped:
-        if _is_ip_restricted(ip.ipv4_mapped):
-            return True
+    if (
+        isinstance(ip, ipaddress.IPv6Address)
+        and ip.ipv4_mapped
+        and _is_ip_restricted(ip.ipv4_mapped)
+    ):
+        return True
     return any(ip in net for net in RESTRICTED_NETWORKS)
 
 

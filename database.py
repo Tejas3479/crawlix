@@ -105,6 +105,22 @@ class ApiKey(SQLModel, table=True):  # type: ignore[call-arg]
     rate_limit: int = Field(default=60)
     created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
 
+class WebMonitor(SQLModel, table=True):  # type: ignore[call-arg]
+    id: str = Field(default_factory=lambda: str(uuid.uuid4()), primary_key=True)
+    url: str
+    name: str = "Web Page Monitor"
+    cron_expression: str = "*/30 * * * *"
+    check_type: str = "diff"  # diff, semantic, selector
+    css_selector: str | None = None
+    last_content_hash: str | None = None
+    last_snapshot: str | None = None
+    webhook_url: str | None = None
+    next_run_at: datetime | None = None
+    status: str = "active"  # active, paused
+    total_checks: int = 0
+    change_count: int = 0
+    created_at: datetime = Field(default_factory=lambda: datetime.now(timezone.utc))
+
 class Proxy(SQLModel, table=True):  # type: ignore[call-arg]
     id: int | None = Field(default=None, primary_key=True)
     url: str = Field(sa_column=Column("url", String, unique=True))

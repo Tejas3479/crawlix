@@ -13,9 +13,8 @@ os.environ["DATABASE_URL"] = f"sqlite+aiosqlite:///{test_db}"
 from fakeredis import FakeAsyncRedis
 
 import app
-
-
 from database import init_db
+
 
 @pytest.fixture(autouse=True)
 async def setup_test_db():

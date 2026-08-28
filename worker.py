@@ -416,6 +416,71 @@ async def run_batch_crawl_task(
             "results": aggregated_results
         })
 
+async def run_web_monitors_cron(ctx: dict):
+    from croniter import croniter
+
+    from database import WebMonitor
+    from services.content import compute_content_diff
+
+    await init_db()
+    now = datetime.now(timezone.utc)
+
+    async with async_session_maker() as session:
+        result = await session.execute(select(WebMonitor).where(WebMonitor.status == "active"))
+        monitors = result.scalars().all()
+
+        for monitor in monitors:
+            if not croniter.is_valid(monitor.cron_expression):
+                continue
+
+            cron_obj = croniter(monitor.cron_expression, now)
+            if not monitor.next_run_at:
+                monitor.next_run_at = cron_obj.get_next(datetime)
+                session.add(monitor)
+                continue
+
+            if now >= monitor.next_run_at:
+                logger.info(f"Checking web monitor {monitor.id} for {monitor.url}")
+                try:
+                    fetch_res = await run_fetch(
+                        url=monitor.url,
+                        method="GET",
+                        output_format="markdown",
+                        css_selector=monitor.css_selector,
+                        timeout=25,
+                        bypass_cache=True,
+                    )
+                    current_content = str(fetch_res.get("content") or "")
+                    current_hash = hashlib.sha256(current_content.encode("utf-8")).hexdigest()
+
+                    has_changed = False
+                    diff_info = {}
+                    if monitor.last_content_hash and monitor.last_content_hash != current_hash:
+                        has_changed = True
+                        diff_info = compute_content_diff(monitor.last_snapshot or "", current_content)
+
+                    monitor.last_content_hash = current_hash
+                    monitor.last_snapshot = current_content[:20000]
+                    monitor.total_checks += 1
+                    if has_changed:
+                        monitor.change_count += 1
+                        if monitor.webhook_url:
+                            await notify_webhook(monitor.webhook_url, {
+                                "event": "monitor.change_detected",
+                                "monitor_id": monitor.id,
+                                "url": monitor.url,
+                                "diff": diff_info,
+                                "timestamp": datetime.now(timezone.utc).isoformat()
+                            })
+                except Exception as e:
+                    logger.error(f"Failed checking monitor {monitor.id}: {e}")
+
+                monitor.next_run_at = cron_obj.get_next(datetime)
+                session.add(monitor)
+
+        await session.commit()
+
+
 async def startup(ctx):
     await init_db()
     logger.info("ARQ Worker initialized.")
@@ -426,7 +491,10 @@ async def shutdown(ctx):
 
 class WorkerSettings:
     functions: list = [run_crawl_task, run_batch_crawl_task]  # noqa: RUF012
-    cron_jobs: list = [cron(run_scheduled_crawls_cron, minute=None)]  # noqa: RUF012
+    cron_jobs: list = [  # noqa: RUF012
+        cron(run_scheduled_crawls_cron, minute=None),
+        cron(run_web_monitors_cron, minute=None),
+    ]
     on_startup = startup
     on_shutdown = shutdown
     redis_settings = get_redis_settings()

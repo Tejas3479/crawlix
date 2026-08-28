@@ -192,3 +192,47 @@ async def diff_endpoint(req: dict):
         "latency_ms": latency_ms,
         **diff_res
     }
+
+
+# POST /api/extract/self-heal
+@router.post("/api/extract/self-heal", dependencies=[Depends(verify_api_key)])
+async def self_heal_extract_endpoint(req: dict):
+    start = time.monotonic()
+    url = req.get("url")
+    schema = req.get("schema")
+    if not url or not schema:
+        raise HTTPException(status_code=400, detail="'url' and 'schema' are required")
+
+    render_js = bool(req.get("render_js", False))
+    llm_provider = req.get("llm_provider", "openai")
+    llm_api_key = req.get("llm_api_key")
+    extraction_goal = req.get("extraction_goal")
+
+    fetch_res = await run_fetch(
+        url=str(url),
+        method="GET",
+        output_format="html",
+        render_js=render_js,
+        stealth=True,
+        timeout=25,
+    )
+    html = fetch_res.get("raw_html") or ""
+    if not html:
+        raise HTTPException(status_code=502, detail="Failed to fetch page HTML for extraction")
+
+    from services.content import self_healing_extract
+    result = await self_healing_extract(
+        html=html,
+        url=str(url),
+        schema=schema,
+        llm_provider=llm_provider,
+        llm_api_key=llm_api_key,
+        extraction_goal=extraction_goal,
+    )
+    latency_ms = int((time.monotonic() - start) * 1000)
+    return {
+        "url": str(url),
+        "latency_ms": latency_ms,
+        **result
+    }
+
