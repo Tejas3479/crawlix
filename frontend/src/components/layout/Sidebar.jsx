@@ -90,8 +90,15 @@ export function Sidebar() {
       items: [
         {
           id: 'proxies',
-          label: 'Proxies & Sessions',
+          label: 'Developer Console',
           icon: Server,
+        },
+        {
+          id: 'sessions',
+          label: 'Session Contexts',
+          icon: Layers,
+          badge: 'TLS/CDP',
+          badgeColor: 'bg-hazelnut-400/20 text-hazelnut-600 dark:text-hazelnut-300 border-hazelnut-400/40',
         },
         {
           id: 'docs',

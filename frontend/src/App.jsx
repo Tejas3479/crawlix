@@ -15,6 +15,7 @@ import { VectorRagView } from './components/rag/VectorRagView';
 import { MapView } from './components/map/MapView';
 import { SearchView } from './components/search/SearchView';
 import { AdminView } from './components/admin/AdminView';
+import { SessionsView } from './components/sessions/SessionsView';
 import { ApiDocsView } from './components/docs/ApiDocsView';
 import { AnalyticsView } from './components/analytics/AnalyticsView';
 
@@ -55,6 +56,7 @@ export default function App() {
           {activeTab === 'map' && <MapView />}
           {activeTab === 'search' && <SearchView />}
           {activeTab === 'proxies' && <AdminView />}
+          {activeTab === 'sessions' && <SessionsView />}
           {activeTab === 'docs' && <ApiDocsView />}
           {activeTab === 'analytics' && <AnalyticsView />}
         </main>
