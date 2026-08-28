@@ -268,9 +268,9 @@ async def _extract_llm_structured_text(
                 "Content-Type": "application/json",
             }
             
-            user_content = user
+            openai_content: str | list[dict[str, Any]] = user
             if image_data:
-                user_content = [
+                openai_content = [
                     {"type": "text", "text": user},
                     {"type": "image_url", "image_url": {"url": f"data:image/png;base64,{image_data}"}}
                 ]
@@ -279,7 +279,7 @@ async def _extract_llm_structured_text(
                 "model": model,
                 "messages": [
                     {"role": "system", "content": system},
-                    {"role": "user", "content": user_content},
+                    {"role": "user", "content": openai_content},
                 ],
                 "max_tokens": max_tokens,
             }
@@ -314,9 +314,9 @@ async def _extract_llm_structured_text(
                 "Content-Type": "application/json",
             }
             
-            user_content = [{"type": "text", "text": user}]
+            anthropic_content: list[dict[str, Any]] = [{"type": "text", "text": user}]
             if image_data:
-                user_content.insert(0, {
+                anthropic_content.insert(0, {
                     "type": "image",
                     "source": {"type": "base64", "media_type": "image/png", "data": image_data}
                 })
@@ -325,7 +325,7 @@ async def _extract_llm_structured_text(
                 "model": model,
                 "max_tokens": max_tokens,
                 "system": system,
-                "messages": [{"role": "user", "content": user_content}],
+                "messages": [{"role": "user", "content": anthropic_content}],
             }
             if json_schema:
                 payload["output_config"] = {
@@ -366,13 +366,13 @@ async def _extract_llm_structured_text(
             )
             headers = {"Content-Type": "application/json"}
             
-            parts = []
+            gemini_parts: list[dict[str, Any]] = []
             if image_data:
-                parts.append({"inlineData": {"mimeType": "image/png", "data": image_data}})
-            parts.append({"text": system + "\n\n" + (user if isinstance(user, str) else str(user))})
+                gemini_parts.append({"inlineData": {"mimeType": "image/png", "data": image_data}})
+            gemini_parts.append({"text": system + "\n\n" + (user if isinstance(user, str) else str(user))})
             
             payload = {
-                "contents": [{"parts": parts}],
+                "contents": [{"parts": gemini_parts}],
                 "generationConfig": {"responseMimeType": "application/json"},
             }
             if json_schema:
@@ -507,6 +507,7 @@ async def auto_generate_schema(
                 api_key=key,
                 system="You are an expert web scraping schema architect. Propose clean JSON schemas for web data extraction.",
                 user=prompt,
+                json_schema=None,
                 max_tokens=1500
             )
             parsed = json.loads(_strip_json_fences(raw))
