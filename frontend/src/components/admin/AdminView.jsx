@@ -59,18 +59,30 @@ export function AdminView() {
   const [schedUrl, setSchedUrl] = useState('https://news.ycombinator.com');
   const [schedMaxPages, setSchedMaxPages] = useState(50);
 
+  // Web Monitor Watchdog state
+  const [monitors, setMonitors] = useState([]);
+  const [monUrl, setMonUrl] = useState('https://news.ycombinator.com');
+  const [monName, setMonName] = useState('HackerNews Frontpage Monitor');
+  const [monCron, setMonCron] = useState('*/30 * * * *');
+  const [monWebhook, setMonWebhook] = useState('');
+  const [monSelector, setMonSelector] = useState('');
+  const [isCheckingMonitor, setIsCheckingMonitor] = useState({});
+  const [monitorCheckResults, setMonitorCheckResults] = useState({});
+
   const loadAll = async () => {
     try {
-      const [p, d, s, k] = await Promise.all([
+      const [p, d, s, k, m] = await Promise.all([
         request('/api/proxies').catch(() => []),
         request('/api/destinations').catch(() => []),
         request('/api/schedule').catch(() => []),
         request('/api/keys').catch(() => []),
+        request('/api/monitors').catch(() => []),
       ]);
       setProxies(p);
       setDestinations(d);
       setSchedules(s);
       setApiKeys(k);
+      setMonitors(m || []);
     } catch (e) {
       console.error(e);
     }
@@ -245,6 +257,65 @@ export function AdminView() {
     }
   };
 
+  // Web Monitor Handlers
+  const handleCreateMonitor = async (e) => {
+    e.preventDefault();
+    if (!monUrl.trim()) return;
+    try {
+      await request('/api/monitors', {
+        method: 'POST',
+        body: JSON.stringify({
+          url: monUrl.trim(),
+          name: monName.trim(),
+          cron_expression: monCron.trim(),
+          webhook_url: monWebhook.trim() || null,
+          css_selector: monSelector.trim() || null,
+        }),
+      });
+      addToast({ type: 'success', title: 'Monitor Created', message: `Watchdog tracking ${monUrl}` });
+      setMonUrl('');
+      loadAll();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Failed to create monitor', message: err.message });
+    }
+  };
+
+  const handleDeleteMonitor = async (id) => {
+    try {
+      await request(`/api/monitors/${id}`, { method: 'DELETE' });
+      addToast({ type: 'success', message: 'Web monitor deleted' });
+      loadAll();
+    } catch (err) {
+      addToast({ type: 'error', message: err.message });
+    }
+  };
+
+  const handleCheckMonitor = async (id) => {
+    setIsCheckingMonitor((prev) => ({ ...prev, [id]: true }));
+    try {
+      const res = await request(`/api/monitors/${id}/check`, { method: 'POST' });
+      setMonitorCheckResults((prev) => ({ ...prev, [id]: res }));
+      if (res.has_changed) {
+        addToast({
+          type: 'warning',
+          title: 'Semantic Change Detected!',
+          message: `Diff: +${res.diff?.additions_count || 0} / -${res.diff?.deletions_count || 0} lines changed.`,
+        });
+      } else {
+        addToast({
+          type: 'success',
+          title: 'Content Verified Identical',
+          message: 'No changes detected since last snapshot.',
+        });
+      }
+      loadAll();
+    } catch (err) {
+      addToast({ type: 'error', title: 'Check Failed', message: err.message });
+    } finally {
+      setIsCheckingMonitor((prev) => ({ ...prev, [id]: false }));
+    }
+  };
+
   return (
     <div className="flex-1 flex flex-col bg-espresso-50/50 dark:bg-black/60 p-8 overflow-y-auto max-w-6xl mx-auto space-y-6">
       <div className="flex items-center justify-between">
@@ -254,7 +325,7 @@ export function AdminView() {
             <span>Developer Console & Infrastructure Hub</span>
           </div>
           <p className="text-xs text-espresso-600 dark:text-espresso-400">
-            Manage tenant API keys, webhook testbench with HMAC SHA-256 verification, residential proxies, and vector destinations.
+            Manage tenant API keys, web monitors & change watchdog, webhook testbench with HMAC SHA-256 verification, residential proxies, and vector destinations.
           </p>
         </div>
 
@@ -279,6 +350,18 @@ export function AdminView() {
         >
           <Key className="w-3.5 h-3.5" />
           <span>Tenant API Keys ({apiKeys.length})</span>
+        </button>
+
+        <button
+          onClick={() => setActiveSubTab('monitors')}
+          className={`flex items-center gap-2 px-4 py-2 rounded-xl transition ${
+            activeSubTab === 'monitors'
+              ? 'bg-caramel-500 text-white shadow-lg shadow-caramel-500/20 font-bold'
+              : 'text-espresso-600 dark:text-espresso-400 hover:text-espresso-900 dark:hover:text-white'
+          }`}
+        >
+          <Activity className="w-3.5 h-3.5" />
+          <span>Web Monitors & Diff ({monitors.length})</span>
         </button>
 
         <button
@@ -419,6 +502,172 @@ export function AdminView() {
                     </button>
                   </div>
                 ))}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Web Monitors & Diff Watchdog Tab */}
+      {activeSubTab === 'monitors' && (
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+          <div className="p-6 rounded-3xl border border-caramel-500/15 bg-white dark:bg-espresso-900/60 space-y-4 h-fit shadow-sm">
+            <h3 className="text-sm font-bold text-espresso-900 dark:text-white flex items-center gap-2">
+              <Plus className="w-4 h-4 text-caramel-500" />
+              <span>Create Web Monitor</span>
+            </h3>
+            <form onSubmit={handleCreateMonitor} className="space-y-3">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-espresso-600 dark:text-espresso-400 uppercase">
+                  Monitor Name
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={monName}
+                  onChange={(e) => setMonName(e.target.value)}
+                  placeholder="e.g. Pricing Page Watchdog"
+                  className="w-full px-3 py-2 rounded-xl glass-input text-xs"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-espresso-600 dark:text-espresso-400 uppercase">
+                  Target URL
+                </label>
+                <input
+                  type="url"
+                  required
+                  value={monUrl}
+                  onChange={(e) => setMonUrl(e.target.value)}
+                  placeholder="https://example.com/pricing"
+                  className="w-full px-3 py-2 rounded-xl glass-input text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-espresso-600 dark:text-espresso-400 uppercase">
+                  Cron Expression (Interval)
+                </label>
+                <input
+                  type="text"
+                  required
+                  value={monCron}
+                  onChange={(e) => setMonCron(e.target.value)}
+                  placeholder="*/30 * * * * (Every 30 minutes)"
+                  className="w-full px-3 py-2 rounded-xl glass-input text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-espresso-600 dark:text-espresso-400 uppercase">
+                  CSS Selector (Optional Scope)
+                </label>
+                <input
+                  type="text"
+                  value={monSelector}
+                  onChange={(e) => setMonSelector(e.target.value)}
+                  placeholder="e.g. main, .pricing-table, article"
+                  className="w-full px-3 py-2 rounded-xl glass-input text-xs font-mono"
+                />
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-espresso-600 dark:text-espresso-400 uppercase">
+                  Alert Webhook URL (Optional)
+                </label>
+                <input
+                  type="url"
+                  value={monWebhook}
+                  onChange={(e) => setMonWebhook(e.target.value)}
+                  placeholder="https://api.yourcompany.com/alerts"
+                  className="w-full px-3 py-2 rounded-xl glass-input text-xs font-mono"
+                />
+              </div>
+
+              <button
+                type="submit"
+                className="w-full py-2.5 rounded-xl bg-gradient-caramel text-white font-bold text-xs shadow-lg shadow-caramel-500/25 transition"
+              >
+                Start Tracking Webpage
+              </button>
+            </form>
+          </div>
+
+          <div className="md:col-span-2 space-y-4">
+            <h3 className="text-xs font-bold text-espresso-600 dark:text-espresso-400 uppercase tracking-wider">
+              Active Watchdog Monitors ({monitors.length})
+            </h3>
+            {monitors.length === 0 ? (
+              <div className="p-8 text-center rounded-3xl border border-caramel-500/15 bg-white dark:bg-espresso-900/40 text-espresso-400 dark:text-espresso-600 text-xs shadow-sm">
+                No active web monitors configured. Create one on the left to start tracking content drift.
+              </div>
+            ) : (
+              <div className="space-y-3">
+                {monitors.map((m) => {
+                  const checkResult = monitorCheckResults[m.id];
+                  const checking = isCheckingMonitor[m.id];
+                  return (
+                    <div
+                      key={m.id}
+                      className="p-5 rounded-2xl bg-white dark:bg-espresso-900/60 border border-caramel-500/15 space-y-3 shadow-sm"
+                    >
+                      <div className="flex items-start justify-between">
+                        <div className="space-y-1">
+                          <div className="flex items-center gap-2">
+                            <span className="font-bold text-espresso-900 dark:text-white text-xs">{m.name}</span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-caramel-500/20 text-caramel-700 dark:text-caramel-300 font-mono">
+                              {m.cron_expression}
+                            </span>
+                            <span className="px-2 py-0.5 rounded text-[10px] font-bold bg-emerald-500/10 text-emerald-600 border border-emerald-500/20 uppercase">
+                              {m.status}
+                            </span>
+                          </div>
+                          <p className="text-xs text-hazelnut-600 dark:text-hazelnut-400 font-mono break-all">{m.url}</p>
+                          <div className="flex items-center gap-4 text-[11px] text-espresso-500">
+                            <span>Checks: <b>{m.total_checks}</b></span>
+                            <span>Changes Detected: <b>{m.change_count}</b></span>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2">
+                          <button
+                            onClick={() => handleCheckMonitor(m.id)}
+                            disabled={checking}
+                            className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-caramel-500/15 hover:bg-caramel-500/25 text-caramel-700 dark:text-caramel-300 text-xs font-bold transition disabled:opacity-50"
+                          >
+                            <RotateCw className={`w-3.5 h-3.5 ${checking ? 'animate-spin' : ''}`} />
+                            <span>{checking ? 'Checking...' : 'Check Now'}</span>
+                          </button>
+                          <button
+                            onClick={() => handleDeleteMonitor(m.id)}
+                            className="p-1.5 rounded-lg text-espresso-400 hover:text-rose-500 hover:bg-rose-500/10 transition"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+
+                      {checkResult && (
+                        <div className="p-3.5 rounded-xl bg-espresso-50 dark:bg-black/60 border border-caramel-500/15 text-xs font-mono space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px]">
+                            <span className={checkResult.has_changed ? 'text-amber-600 font-bold' : 'text-emerald-600 font-bold'}>
+                              {checkResult.has_changed ? '⚠️ Content Changed' : '✅ Content Identical'}
+                            </span>
+                            <span className="text-espresso-400">
+                              +{checkResult.diff?.additions_count || 0} / -{checkResult.diff?.deletions_count || 0} lines
+                            </span>
+                          </div>
+                          {checkResult.diff?.diff_text && (
+                            <pre className="text-[10px] text-espresso-700 dark:text-espresso-300 max-h-32 overflow-y-auto p-2 rounded bg-white dark:bg-espresso-950">
+                              {checkResult.diff.diff_text}
+                            </pre>
+                          )}
+                        </div>
+                      )}
+                    </div>
+                  );
+                })}
               </div>
             )}
           </div>
